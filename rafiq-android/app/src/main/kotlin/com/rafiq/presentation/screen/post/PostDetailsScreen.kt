@@ -1,0 +1,424 @@
+package com.rafiq.presentation.screen.post
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import coil3.compose.AsyncImage
+import com.rafiq.domain.model.Comment
+import com.rafiq.domain.model.Post
+import com.rafiq.presentation.screen.profile.ModernPostCard
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.Image
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PostDetailsScreen(
+    postId: String,
+    onNavigateBack: () -> Unit,
+    onNavigateToProfile: (String) -> Unit,
+    viewModel: PostDetailsViewModel = hiltViewModel()
+) {
+    val post by viewModel.post.collectAsState()
+    val postUser by viewModel.postUser.collectAsState()
+    val comments by viewModel.comments.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+
+    var commentText by remember { mutableStateOf("") }
+    var replyingTo by remember { mutableStateOf<Comment?>(null) }
+    var postToEdit by remember { mutableStateOf<Post?>(null) }
+    var commentToEdit by remember { mutableStateOf<Comment?>(null) }
+    val context = LocalContext.current
+
+    LaunchedEffect(postId) {
+        viewModel.loadPostDetails(postId)
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Post", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_arrow_left), contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+            )
+        },
+        bottomBar = {
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 0.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(8.dp)
+                ) {
+                    if (replyingTo != null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Replying to ${replyingTo?.user?.name ?: "User"}",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            IconButton(
+                                onClick = { replyingTo = null },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_x), contentDescription = "Cancel Reply", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.White
+                        ) {
+                            TextField(
+                                value = commentText,
+                                onValueChange = { commentText = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                placeholder = { Text("Write a comment...", color = Color.Gray) },
+                                colors = TextFieldDefaults.colors(
+                                    focusedContainerColor = Color.Transparent,
+                                    unfocusedContainerColor = Color.Transparent,
+                                    disabledContainerColor = Color.Transparent,
+                                    focusedIndicatorColor = Color.Transparent,
+                                    unfocusedIndicatorColor = Color.Transparent,
+                                    cursorColor = MaterialTheme.colorScheme.primary
+                                ),
+                                maxLines = 4
+                            )
+                        }
+                        
+                        Surface(
+                            onClick = {
+                                if (commentText.isNotBlank()) {
+                                    viewModel.submitComment(postId, commentText.trim(), replyingTo?.id)
+                                    commentText = ""
+                                    replyingTo = null
+                                    android.widget.Toast.makeText(context, "Reply sent", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.Black,
+                            modifier = Modifier.size(52.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_send),
+                                    contentDescription = "Send",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ) { paddingValues ->
+        if (isLoading && post == null) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                // Main Post
+                if (post != null && postUser != null) {
+                    item {
+                        ModernPostCard(
+                            user = postUser!!,
+                            post = post!!,
+                            currentUserId = viewModel.currentUserId,
+                            onLikeClick = { viewModel.toggleLike(postId) },
+                            onCommentClick = { /* Scroll to comments maybe? */ },
+                            onEditClick = { postToEdit = it },
+                            onDeleteClick = { viewModel.deletePost(it.id) { onNavigateBack() } }
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
+                    }
+                }
+
+                // Comments List
+                items(comments.size) { index ->
+                    val comment = comments[index]
+                    CommentItem(
+                        comment = comment,
+                        currentUserId = viewModel.currentUserId,
+                        onReplyClick = { replyingTo = it },
+                        onProfileClick = onNavigateToProfile,
+                        onEditClick = { commentToEdit = it },
+                        onDeleteClick = { viewModel.deleteComment(it.id) }
+                    )
+                    if (index < comments.lastIndex) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    val currentCommentToEdit = commentToEdit
+    if (currentCommentToEdit != null) {
+        var editCommentText by remember(currentCommentToEdit.id) { mutableStateOf(currentCommentToEdit.textContent) }
+        AlertDialog(
+            onDismissRequest = { commentToEdit = null },
+            title = { Text("Edit Comment") },
+            text = {
+                OutlinedTextField(
+                    value = editCommentText,
+                    onValueChange = { editCommentText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Comment") }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.editComment(currentCommentToEdit.id, editCommentText)
+                    commentToEdit = null
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { commentToEdit = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    val currentPostToEdit = postToEdit
+    if (currentPostToEdit != null) {
+        var editText by remember(currentPostToEdit.id) { mutableStateOf(currentPostToEdit.textContent) }
+        AlertDialog(
+            onDismissRequest = { postToEdit = null },
+            title = { Text("Edit Post") },
+            text = {
+                OutlinedTextField(
+                    value = editText,
+                    onValueChange = { editText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Post content") }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.editPost(currentPostToEdit.id, editText)
+                    postToEdit = null
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { postToEdit = null }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+@Composable
+fun CommentItem(
+    comment: Comment,
+    currentUserId: String?,
+    onReplyClick: (Comment) -> Unit,
+    onProfileClick: (String) -> Unit,
+    onEditClick: (Comment) -> Unit,
+    onDeleteClick: (Comment) -> Unit
+) {
+    var showMenu by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                start = if (comment.parentId == null) 24.dp else 0.dp,
+                end = if (comment.parentId == null) 24.dp else 0.dp,
+                bottom = if (comment.parentId == null) 16.dp else 0.dp
+            )
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(0.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val avatarUrl = comment.user?.avatar
+                    if (avatarUrl != null && avatarUrl.isNotBlank()) {
+                        AsyncImage(
+                            model = avatarUrl,
+                            contentDescription = "Avatar",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .clickable { onProfileClick(comment.userId) }
+                        )
+                    } else {
+                        Image(
+                            painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_user),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFF3F4F6))
+                                .clickable { onProfileClick(comment.userId) },
+                            contentScale = ContentScale.Inside
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = comment.user?.name ?: "Unknown",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            modifier = Modifier.clickable { onProfileClick(comment.userId) }
+                        )
+                        val timeStr = android.text.format.DateUtils.getRelativeTimeSpanString(comment.timestamp).toString()
+                        Text(timeStr, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    Box {
+                        Surface(
+                            onClick = { showMenu = true },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.05f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_ellipsis_vertical), contentDescription = "More Options", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                            shape = RoundedCornerShape(16.dp),
+                            containerColor = Color.White,
+                            tonalElevation = 0.dp,
+                            shadowElevation = 8.dp
+                        ) {
+                            if (comment.userId == currentUserId) {
+                                DropdownMenuItem(
+                                    text = { Text("Edit", style = MaterialTheme.typography.titleSmall) },
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp).clip(RoundedCornerShape(12.dp)),
+                                    onClick = {
+                                        showMenu = false
+                                        onEditClick(comment)
+                                    },
+                                    leadingIcon = { Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_pencil), contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Delete", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error) },
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp).clip(RoundedCornerShape(12.dp)),
+                                    onClick = {
+                                        showMenu = false
+                                        onDeleteClick(comment)
+                                    },
+                                    leadingIcon = { Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_trash_2), contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp)) },
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                                )
+                            } else {
+                                DropdownMenuItem(
+                                    text = { Text("Report", style = MaterialTheme.typography.titleSmall) },
+                                    onClick = { showMenu = false }
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                if (comment.replyingToUsername != null) {
+                    Text(
+                        text = "Replying to @${comment.replyingToUsername}",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+                Text(text = comment.textContent, fontSize = 15.sp, lineHeight = 22.sp, color = Color(0xFF111111))
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Reply",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { onReplyClick(comment) }
+                    )
+                }
+            }
+        }
+        
+        if (comment.replies.isNotEmpty()) {
+            var expanded by remember { mutableStateOf(false) }
+            val repliesToShow = if (expanded) comment.replies else comment.replies.take(1)
+
+            Column(modifier = Modifier.padding(start = 32.dp, top = 12.dp)) {
+                repliesToShow.forEach { reply ->
+                    CommentItem(
+                        comment = reply,
+                        currentUserId = currentUserId,
+                        onReplyClick = onReplyClick,
+                        onProfileClick = onProfileClick,
+                        onEditClick = onEditClick,
+                        onDeleteClick = onDeleteClick
+                    )
+                    if (reply != repliesToShow.last()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                }
+                
+                if (comment.replies.size > 1) {
+                    Text(
+                        text = if (expanded) "Hide replies" else "Show ${comment.replies.size - 1} more replies",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        modifier = Modifier
+                            .padding(top = 8.dp, bottom = 8.dp)
+                            .clickable { expanded = !expanded }
+                    )
+                }
+            }
+        }
+    }
+}

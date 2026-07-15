@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "1072982261707",
+    "firebase_url": "https://rafiq-35d30-default-rtdb.firebaseio.com",
+    "project_id": "rafiq-35d30",
+    "storage_bucket": "rafiq-35d30.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1072982261707:android:99f02b8846dd876c92c04e",
+        "android_client_info": {
+          "package_name": "com.rafiq.dating"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1072982261707-f2lblhlg6es71943a2eg4pkh9sl7ir9s.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rafiq.dating",
+            "certificate_hash": "18b39f2fd01c8c0e2e737a9de8d92deb14177afe"
+          }
+        },
+        {
+          "client_id": "1072982261707-1npj0g8m52gk0e5spsopmnrq8o91sapf.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyChB9ifnB3KgK0mYRXzrbJ1-SeZ6DehVvM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1072982261707-1npj0g8m52gk0e5spsopmnrq8o91sapf.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

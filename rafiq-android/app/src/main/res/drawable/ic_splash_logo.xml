@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Padding/Width ensures the logo fits within the Android 12 circular splash screen mask -->
+    <item
+        android:drawable="@drawable/logo"
+        android:gravity="center"
+        android:width="100dp"
+        android:height="100dp" />
+</layer-list>
