@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.rafiq.dating",
+      "sha256_cert_fingerprints": [
+        "45:36:A3:7B:E3:6E:98:C0:79:B6:A7:62:EF:96:C9:84:45:66:72:AD:55:CD:05:EF:B0:BE:39:BC:C3:FE:DC:8C"
+      ]
+    }
+  }
+]
