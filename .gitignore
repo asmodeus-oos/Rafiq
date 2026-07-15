@@ -1,0 +1,10 @@
+temp-rafiq/
+temp_lucide/
+*.zip
+.idea/
+.gradle/
+build/
+.DS_Store
+node_modules/
+.next/
+*.log
