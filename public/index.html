@@ -418,11 +418,19 @@
                     document.getElementById('prof-name').textContent = name;
                     document.getElementById('prof-handle').textContent = `@${user.username || 'user'}`;
                     document.getElementById('prof-bio').textContent = user.bio || '';
-                    document.getElementById('prof-followers').textContent = user.followers_count || 0;
-                    document.getElementById('prof-following').textContent = user.following_count || 0;
                     if (user.avatar_url) document.getElementById('prof-avatar').src = user.avatar_url;
                     if (user.cover_url) document.getElementById('prof-cover').src = user.cover_url;
                     if (user.isverified) document.getElementById('prof-verified').style.display = 'inline-flex';
+
+                    // Fetch follower and following count from follows table
+                    dbFetch('follows', `following_id=eq.${user.id}&select=id`).then(res => {
+                        const count = (res && Array.isArray(res)) ? res.length : (user.followers_count || 0);
+                        document.getElementById('prof-followers').textContent = count;
+                    });
+                    dbFetch('follows', `follower_id=eq.${user.id}&select=id`).then(res => {
+                        const count = (res && Array.isArray(res)) ? res.length : (user.following_count || 0);
+                        document.getElementById('prof-following').textContent = count;
+                    });
 
                     showView('view-profile');
                 } else {

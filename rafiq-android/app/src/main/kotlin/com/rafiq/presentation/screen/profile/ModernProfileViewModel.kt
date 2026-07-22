@@ -175,11 +175,31 @@ class ModernProfileViewModel @Inject constructor(
     private fun fetchUser(uid: String) {
         viewModelScope.launch {
             try {
-                val fetchedUser = supabaseClient.postgrest["users"]
-                    .select(Columns.ALL) { filter { eq("id", uid) } }
-                    .decodeSingleOrNull<User>()
+                var fetchedUser: User? = null
+                try {
+                    fetchedUser = supabaseClient.postgrest["users"]
+                        .select(Columns.ALL) { filter { eq("id", uid) } }
+                        .decodeSingleOrNull<User>()
+                } catch (e: Exception) {
+                    // Ignored, try username
+                }
+                
+                if (fetchedUser == null) {
+                    try {
+                        fetchedUser = supabaseClient.postgrest["users"]
+                            .select(Columns.ALL) { filter { eq("username", uid) } }
+                            .decodeSingleOrNull<User>()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+                
                 if (fetchedUser != null) {
                     _user.value = fetchedUser
+                    if (fetchedUser.id != uid) {
+                        fetchPosts(fetchedUser.id)
+                        fetchFollowStats(fetchedUser.id)
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

@@ -39,15 +39,17 @@ fun RafiqNavGraph(
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val startDestination = if (supabaseClient.auth.currentSessionOrNull() != null) {
-        deepLinkRoute ?: Route.Home.route
+        Route.Home.route
     } else {
         Route.Auth.route
     }
 
     LaunchedEffect(deepLinkRoute) {
         if (deepLinkRoute != null && supabaseClient.auth.currentSessionOrNull() != null) {
-            navController.navigate(deepLinkRoute) {
-                popUpTo(Route.Home.route) { inclusive = false }
+            try {
+                navController.navigate(deepLinkRoute)
+            } catch (e: Exception) {
+                android.util.Log.e("RafiqNavGraph", "Deep link navigation failed: ${e.message}")
             }
         }
     }
