@@ -3,6 +3,7 @@ package com.rafiq.presentation.components.common
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,12 +14,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import com.rafiq.presentation.theme.BorderLight
 import com.rafiq.presentation.theme.PrimaryAccent
-import com.rafiq.presentation.theme.TertiaryAccent
+import com.rafiq.presentation.theme.AccentSurfaceStrong
 
 @Composable
 fun DualToneFAB(
@@ -26,8 +27,6 @@ fun DualToneFAB(
     contentDescription: String? = null,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    primaryColor: Color = PrimaryAccent,
-    secondaryColor: Color = TertiaryAccent
 ) {
     var isPressed by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
@@ -41,25 +40,27 @@ fun DualToneFAB(
             .scale(scale)
             .size(58.dp)
             .clip(RoundedCornerShape(20.dp))
+            .border(1.dp, BorderLight, RoundedCornerShape(20.dp))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
             ),
         shape = RoundedCornerShape(20.dp),
-        shadowElevation = 6.dp,
-        color = Color.Transparent
+        shadowElevation = 0.dp,
+        tonalElevation = 0.dp,
+        color = AccentSurfaceStrong
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Brush.horizontalGradient(listOf(primaryColor, secondaryColor))),
+                .background(AccentSurfaceStrong),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 painter = painterResource(id = iconRes),
                 contentDescription = contentDescription,
-                tint = Color.White,
+                tint = PrimaryAccent,
                 modifier = Modifier.size(26.dp)
             )
         }

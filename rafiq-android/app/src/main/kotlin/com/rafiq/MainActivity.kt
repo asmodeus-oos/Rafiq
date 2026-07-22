@@ -3,10 +3,26 @@ package com.rafiq
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Surface
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import com.rafiq.presentation.navigation.RafiqNavGraph
+import com.rafiq.presentation.navigation.Route
 import com.rafiq.presentation.theme.BackgroundPrimary
 import com.rafiq.presentation.theme.RafiqTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -23,7 +39,6 @@ import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.auth.auth
 
-import androidx.compose.runtime.LaunchedEffect
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -103,15 +118,20 @@ class MainActivity : ComponentActivity() {
                                         }
                                 }
                             }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                    }
-                }
-            }
-        }
+	                        } catch (e: Exception) {
+	                            e.printStackTrace()
+	                        }
+	                    }
+	                }
+	            }
+	        }
 
         setContent {
             RafiqTheme {
+                var showApp by remember {
+                    mutableStateOf(supabaseClient.auth.currentSessionOrNull() != null)
+                }
+                var sessionChecked by remember { mutableStateOf(false) }
 
                 val targetPostId = intent.getStringExtra("POST_ID")
                 val targetUserId = intent.getStringExtra("USER_ID")
@@ -121,24 +141,81 @@ class MainActivity : ComponentActivity() {
                     com.rafiq.presentation.navigation.Route.PostDetails.createRoute(targetPostId)
                 } else if (targetUserId != null) {
                     if (isChat) {
-                        com.rafiq.presentation.navigation.Route.ChatDetail.createRoute(targetUserId)
+                        Route.ChatDetail.createRoute(targetUserId)
                     } else {
-                        com.rafiq.presentation.navigation.Route.Profile.createRoute(targetUserId)
+                        Route.Profile.createRoute(targetUserId)
                     }
                 } else null
 
+                val permissionsToRequest = remember {
+                    val list = mutableListOf(
+                        android.Manifest.permission.CAMERA,
+                        android.Manifest.permission.RECORD_AUDIO,
+                        android.Manifest.permission.ACCESS_FINE_LOCATION,
+                        android.Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        list.add(android.Manifest.permission.POST_NOTIFICATIONS)
+                        list.add(android.Manifest.permission.READ_MEDIA_IMAGES)
+                        list.add(android.Manifest.permission.READ_MEDIA_VIDEO)
+                        list.add(android.Manifest.permission.READ_MEDIA_AUDIO)
+                    } else {
+                        list.add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                    }
+                    list
+                }
+
+                val permissionsState = rememberMultiplePermissionsState(permissionsToRequest)
+
+                LaunchedEffect(Unit) {
+                    sessionChecked = true
+                    if (supabaseClient.auth.currentSessionOrNull() != null) {
+                        showApp = true
+                    }
+                    if (!permissionsState.allPermissionsGranted) {
+                        permissionsState.launchMultiplePermissionRequest()
+                    }
+                }
+
                 Surface(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .statusBarsPadding()
+                        .navigationBarsPadding(),
                     color = BackgroundPrimary
                 ) {
-                    RafiqNavGraph(
-                        supabaseClient = supabaseClient,
-                        deepLinkRoute = startRoute
-                    )
+                    if (!sessionChecked) {
+                        androidx.compose.foundation.layout.Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = androidx.compose.ui.Alignment.Center
+                        ) {
+                            androidx.compose.foundation.layout.Column(
+                                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+                            ) {
+                                Image(
+                                    painter = painterResource(id = com.rafiq.R.drawable.logo),
+                                    contentDescription = "Rafiq",
+                                    modifier = Modifier.size(96.dp)
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                CircularProgressIndicator(color = com.rafiq.presentation.theme.PrimaryAccent)
+                            }
+                        }
+                    } else if (!showApp) {
+                        com.rafiq.presentation.auth.AuthScreen(
+                            onAuthSuccess = {
+                                showApp = true
+                            }
+                        )
+                    } else {
+                        RafiqNavGraph(
+                            supabaseClient = supabaseClient,
+                            deepLinkRoute = startRoute
+                        )
+                    }
                 }
             }
         }
-    }
     }
 
     override fun onNewIntent(intent: android.content.Intent) {

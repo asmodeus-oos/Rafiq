@@ -87,7 +87,10 @@ class ChatViewModel @Inject constructor(
     }
 
     fun getMessages(otherUserId: String) {
-        currentChatPartner = otherUserId
+        if (currentChatPartner != otherUserId) {
+            currentChatPartner = otherUserId
+            _messages.value = emptyList()
+        }
         chatJob?.cancel()
         
         // Fetch target user info
@@ -108,6 +111,24 @@ class ChatViewModel @Inject constructor(
                 e.printStackTrace()
             }
         }
+
+        // Immediate fetch to avoid empty screen flicker
+        viewModelScope.launch {
+            try {
+                val currentUserId = supabaseClient.auth.currentUserOrNull()?.id ?: ""
+                if (currentUserId.isNotBlank() && otherUserId.isNotBlank()) {
+                    val history = supabaseClient.postgrest["messages"].select {
+                        filter {
+                            isIn("sender_id", listOf(currentUserId, otherUserId))
+                            isIn("receiver_id", listOf(currentUserId, otherUserId))
+                        }
+                    }.decodeList<Message>()
+                    _messages.value = history.sortedBy { it.createdAt }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
         
         chatJob = viewModelScope.launch {
             _isLoading.value = true
@@ -118,7 +139,6 @@ class ChatViewModel @Inject constructor(
                 chatRepository.getMessagesFlow(otherUserId)
                     .catch { e ->
                         _isLoading.value = false
-                        // Handle error if needed
                     }
                     .collect { newMessages ->
                         _messages.value = newMessages
@@ -126,7 +146,7 @@ class ChatViewModel @Inject constructor(
                     }
             }
             
-            // Fallback Polling every 1.5 seconds
+            // Fallback Polling every 1 second
             launch {
                 while(isActive) {
                     kotlinx.coroutines.delay(1000)
@@ -145,10 +165,10 @@ class ChatViewModel @Inject constructor(
                 }
             }
             
-            // Poll target user every 5 seconds for online status updates
+            // Poll target user every 3 seconds for online status updates
             launch {
                 while(isActive) {
-                    kotlinx.coroutines.delay(1000)
+                    kotlinx.coroutines.delay(3000)
                     try {
                         val user = supabaseClient.postgrest["users"]
                             .select { filter { eq("id", otherUserId) } }
@@ -158,6 +178,66 @@ class ChatViewModel @Inject constructor(
                         e.printStackTrace()
                     }
                 }
+            }
+        }
+    }
+
+    fun sendGift(receiverId: String, giftName: String, giftEmoji: String, diamondCost: Int, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            val senderId = currentUserId ?: return@launch
+            try {
+                var rpcSuccess = false
+                try {
+                    val params = kotlinx.serialization.json.buildJsonObject {
+                        put("receiver_id", kotlinx.serialization.json.JsonPrimitive(receiverId))
+                        put("amount", kotlinx.serialization.json.JsonPrimitive(diamondCost))
+                    }
+                    supabaseClient.postgrest.rpc("transfer_diamonds", params)
+                    rpcSuccess = true
+                } catch (rpcErr: Exception) {
+                    rpcErr.printStackTrace()
+                }
+
+                if (!rpcSuccess) {
+                    val senderUser = supabaseClient.postgrest["users"]
+                        .select { filter { eq("id", senderId) } }
+                        .decodeSingleOrNull<com.rafiq.domain.model.User>()
+                    
+                    val currentBalance = senderUser?.diamonds ?: 0L
+                    if (currentBalance < diamondCost) {
+                        onError("Insufficient diamonds ($currentBalance 💎). Please top up.")
+                        return@launch
+                    }
+
+                    val receiverUser = supabaseClient.postgrest["users"]
+                        .select { filter { eq("id", receiverId) } }
+                        .decodeSingleOrNull<com.rafiq.domain.model.User>()
+
+                    val newSenderBalance = currentBalance - diamondCost
+                    val newReceiverBalance = (receiverUser?.diamonds ?: 0L) + diamondCost
+
+                    val senderUpdate = kotlinx.serialization.json.buildJsonObject {
+                        put("diamonds", kotlinx.serialization.json.JsonPrimitive(newSenderBalance))
+                    }
+                    supabaseClient.postgrest["users"].update(senderUpdate) { filter { eq("id", senderId) } }
+
+                    val receiverUpdate = kotlinx.serialization.json.buildJsonObject {
+                        put("diamonds", kotlinx.serialization.json.JsonPrimitive(newReceiverBalance))
+                    }
+                    supabaseClient.postgrest["users"].update(receiverUpdate) { filter { eq("id", receiverId) } }
+                }
+
+                val updatedSender = supabaseClient.postgrest["users"]
+                    .select { filter { eq("id", senderId) } }
+                    .decodeSingleOrNull<com.rafiq.domain.model.User>()
+                updatedSender?.let { _currentUser.value = it }
+
+                val giftMessageText = "🎁 Sent a $giftEmoji $giftName ($diamondCost 💎)"
+                sendMessage(receiverId = receiverId, textContent = giftMessageText, mediaUrl = null, isVoice = false, replyToId = null)
+                onSuccess()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onError("Failed to send gift: ${e.message}")
             }
         }
     }

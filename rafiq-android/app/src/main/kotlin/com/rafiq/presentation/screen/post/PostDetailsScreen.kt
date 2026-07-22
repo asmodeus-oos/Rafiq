@@ -58,7 +58,7 @@ fun PostDetailsScreen(
                 title = { Text("Post", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_arrow_left), contentDescription = "Back")
+                        Icon(painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_chevron_left), contentDescription = "Back")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)

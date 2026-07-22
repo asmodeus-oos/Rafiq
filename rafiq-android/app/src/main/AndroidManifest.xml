@@ -5,9 +5,14 @@
     <!-- Network permissions for WebRTC and Socket.IO -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- Camera/Mic for WebRTC -->
+    
+    <!-- Camera/Mic/Audio for WebRTC Calling -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -18,6 +23,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
 
     <application
         android:name=".RafiqApp"
@@ -42,6 +49,11 @@
             android:name=".service.NotificationService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <service
+            android:name=".service.CallForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="microphone|phoneCall" />
             
         <activity
             android:name=".MainActivity"

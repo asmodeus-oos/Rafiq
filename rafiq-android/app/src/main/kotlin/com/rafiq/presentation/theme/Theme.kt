@@ -22,8 +22,8 @@ import com.rafiq.designsystem.interaction.rememberAppIndication
 
 private val LightColorScheme = lightColorScheme(
     primary = PrimaryAccent,
-    secondary = SecondaryAccent,
-    tertiary = TertiaryAccent,
+    secondary = PrimaryAccent,
+    tertiary = PrimaryAccent,
     background = BackgroundPrimary,
     surface = BackgroundSecondary,
     onPrimary = BackgroundSecondary,

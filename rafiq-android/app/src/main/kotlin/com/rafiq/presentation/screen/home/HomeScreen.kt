@@ -2,8 +2,10 @@ package com.rafiq.presentation.screen.home
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -30,6 +32,10 @@ import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 
 import io.github.jan.supabase.auth.auth
+import com.rafiq.presentation.theme.BackgroundSecondary
+import com.rafiq.presentation.theme.BorderLight
+import com.rafiq.presentation.theme.TextPrimary
+import com.rafiq.presentation.theme.TextTertiary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -174,7 +180,7 @@ fun HomeScreen(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp).clip(RoundedCornerShape(12.dp)),
                                 onClick = { 
                                     isProfileMenuExpanded = false 
-                                    onNavigateToProfile(user?.id ?: "")
+                                    user?.id?.takeIf { it.isNotBlank() }?.let(onNavigateToProfile)
                                 },
                                 leadingIcon = { Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_user), contentDescription = null) },
                                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
@@ -268,7 +274,8 @@ fun HomeScreen(
                     onJoinRoom = onNavigateToRoom
                 )
                 2 -> com.rafiq.presentation.screen.post.PostsTabScreen(
-                    onNavigateToPostDetails = onNavigateToPostDetails
+                    onNavigateToPostDetails = onNavigateToPostDetails,
+                    onNavigateToProfile = onNavigateToProfile
                 )
                 3 -> {
                     if (supabaseClient != null) {
@@ -367,14 +374,14 @@ fun HomeFeedContent(
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
                 // 1. Daily Discovery Card (Priority Match)
-                uiState.dailyMatch?.let { (user, score) ->
-                    item {
-                        Text(
-                            text = "Match of the Day",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
+                item {
+                    Text(
+                        text = "Match of the Day",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    uiState.dailyMatch?.let { (user, score) ->
                         com.rafiq.presentation.components.home.DiscoveryCard(
                             user = user,
                             score = score,
@@ -382,6 +389,27 @@ fun HomeFeedContent(
                             onSkip = { onSkip(user.id) },
                             onWave = { /* Icebreaker */ }
                         )
+                    } ?: Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(28.dp),
+                        colors = CardDefaults.cardColors(containerColor = BackgroundSecondary),
+                        border = BorderStroke(1.dp, BorderLight),
+                        elevation = CardDefaults.cardElevation(0.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(20.dp)) {
+                            Text(
+                                text = "Your strongest match will appear here.",
+                                color = TextPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Keep swiping and the app will keep this section filled.",
+                                color = TextTertiary,
+                                fontSize = 13.sp
+                            )
+                        }
                     }
                 }
 
@@ -418,31 +446,47 @@ fun HomeFeedContent(
                     }
                 }
 
-                // 3. Recommended Partners (Nearby/Compatibility Grid)
+                // 3. Recommended Partners
+                item {
+                    Text(
+                        text = "People for You",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                }
+
                 if (uiState.recommendedPartners.isNotEmpty()) {
-                    item {
-                        Text(
-                            text = "People for You",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(bottom = 12.dp)
+                    items(uiState.recommendedPartners) { user ->
+                        SuggestedUserCard(
+                            user = user,
+                            onUserClick = onUserClick,
+                            onLike = { onLike(user.id) },
+                            onSkip = { onSkip(user.id) }
                         )
                     }
-                    
-                    // Using chunked to simulate a grid in LazyColumn
-                    val rows = uiState.recommendedPartners.chunked(2)
-                    items(rows) { rowUsers ->
-                        Row(
+                } else {
+                    item {
+                        Card(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            shape = RoundedCornerShape(28.dp),
+                            colors = CardDefaults.cardColors(containerColor = BackgroundSecondary),
+                            border = BorderStroke(1.dp, BorderLight),
+                            elevation = CardDefaults.cardElevation(0.dp)
                         ) {
-                            rowUsers.forEach { user ->
-                                Box(modifier = Modifier.weight(1f)) {
-                                    SuggestedUserCard(user = user, onUserClick = onUserClick)
-                                }
-                            }
-                            if (rowUsers.size == 1) {
-                                Spacer(modifier = Modifier.weight(1f))
+                            Column(modifier = Modifier.padding(20.dp)) {
+                                Text(
+                                    text = "No suggested users right now.",
+                                    color = TextPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "New profiles will appear here as soon as they match your filters.",
+                                    color = TextTertiary,
+                                    fontSize = 13.sp
+                                )
                             }
                         }
                     }
@@ -458,119 +502,119 @@ fun HomeFeedContent(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SuggestedUserCard(user: com.rafiq.domain.model.User, onUserClick: (String) -> Unit = {}) {
+fun SuggestedUserCard(
+    user: com.rafiq.domain.model.User,
+    onUserClick: (String) -> Unit = {},
+    onLike: () -> Unit = {},
+    onSkip: () -> Unit = {}
+) {
     val isMale = user.gender == com.rafiq.domain.model.Gender.MALE
     Card(
-        modifier = Modifier.fillMaxWidth().clickable { onUserClick(user.id) },
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+        onClick = { onUserClick(user.id) },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = BackgroundSecondary),
+        border = BorderStroke(1.dp, BorderLight),
         elevation = CardDefaults.cardElevation(0.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(60.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.secondaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                if (user.avatar.isNotBlank()) {
-                    coil3.compose.AsyncImage(
-                        model = user.avatar,
-                        contentDescription = "Avatar",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
-                    )
-                } else {
-                    val avatarIcon = if (isMale) com.composables.icons.lucide.R.drawable.lucide_ic_user else com.composables.icons.lucide.R.drawable.lucide_ic_user_round
-                    val avatarTint = if (isMale) androidx.compose.ui.graphics.Color(0xFF2196F3) else androidx.compose.ui.graphics.Color(0xFFE91E63)
-                    Icon(
-                        painter = painterResource(id = avatarIcon),
-                        contentDescription = null,
-                        tint = avatarTint
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(user.name, style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        
-                        val genderIconRes = if (isMale) com.composables.icons.lucide.R.drawable.lucide_ic_mars else com.composables.icons.lucide.R.drawable.lucide_ic_venus
-                        val genderColor = if (isMale) androidx.compose.ui.graphics.Color(0xFF2196F3) else androidx.compose.ui.graphics.Color(0xFFE91E63)
-                        
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(genderColor.copy(alpha = 0.15f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Icon(
-                                painter = painterResource(id = genderIconRes),
-                                contentDescription = "Gender",
-                                tint = genderColor,
-                                modifier = Modifier.size(12.dp)
-                            )
-                        }
-                    }
-                    if (user.showAge && user.age > 0) {
-                        Text(
-                            text = "${user.age} y/o",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+        Column(modifier = Modifier.padding(18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(BorderLight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (user.avatar.isNotBlank()) {
+                        coil3.compose.AsyncImage(
+                            model = user.avatar,
+                            contentDescription = "Avatar",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
+                    } else {
+                        val avatarIcon = if (isMale) com.composables.icons.lucide.R.drawable.lucide_ic_user else com.composables.icons.lucide.R.drawable.lucide_ic_user_round
+                        Icon(
+                            painter = painterResource(id = avatarIcon),
+                            contentDescription = null,
+                            tint = TextTertiary
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    if (user.username.isNotBlank()) {
-                        Text("@${user.username}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    } else {
-                        Spacer(modifier = Modifier.width(1.dp))
+                Spacer(modifier = Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(user.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        if (user.isVerified) {
+                            Icon(
+                                painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_badge_check),
+                                contentDescription = null,
+                                tint = com.rafiq.presentation.theme.PrimaryAccent,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                     }
-                    if (user.showLocation && user.country.isNotBlank()) {
-                        val flag = getFlagEmoji(user.country)
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            if (flag.isNotEmpty()) Text(flag, fontSize = 12.sp)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(user.country, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                painter = painterResource(
+                                    id = if (isMale) com.composables.icons.lucide.R.drawable.lucide_ic_mars else com.composables.icons.lucide.R.drawable.lucide_ic_venus
+                                ),
+                                contentDescription = null,
+                                tint = com.rafiq.presentation.theme.PrimaryAccent,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (user.username.isNotBlank()) "@${user.username}" else "@" + user.name.lowercase().replace(" ", ""),
+                                color = TextTertiary,
+                                fontSize = 12.sp
+                            )
+                        }
+                        if (user.country.isNotBlank()) {
+                            Text(
+                                text = user.country,
+                                color = TextTertiary,
+                                fontSize = 12.sp
+                            )
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    val tags = user.hobbies.take(4)
-                    tags.forEach { tag ->
-                        Box(
-                            modifier = Modifier
-                                .padding(bottom = 4.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text(tag, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                        }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = user.bio.ifBlank { "Open to match, chat, and explore." },
+                color = TextPrimary,
+                fontSize = 14.sp,
+                maxLines = 2
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                user.hobbies.take(4).forEach { tag ->
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(BorderLight)
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(tag, color = TextPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                     }
                 }
             }

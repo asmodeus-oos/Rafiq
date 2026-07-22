@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Rafiq.Splash" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/logo</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
         <item name="android:windowSplashScreenBackground">#FAF9FF</item>
         <item name="postSplashScreenTheme">@style/Theme.Rafiq</item>
     </style>

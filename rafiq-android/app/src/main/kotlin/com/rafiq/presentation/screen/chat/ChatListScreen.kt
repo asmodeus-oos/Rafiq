@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,7 +29,10 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.rafiq.domain.model.Chat
 import com.rafiq.presentation.theme.BackgroundPrimary
+import com.rafiq.presentation.theme.BackgroundSecondary
+import com.rafiq.presentation.theme.BorderLight
 import com.rafiq.presentation.theme.TextPrimary
+import com.rafiq.presentation.theme.TextTertiary
 import com.rafiq.presentation.theme.PrimaryAccent
 
 @OptIn(ExperimentalMaterialApi::class)
@@ -54,17 +58,6 @@ fun ChatListScreen(
     Column(
         modifier = Modifier.fillMaxSize().background(BackgroundPrimary)
     ) {
-        // Header
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onNavigateBack) {
-                Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_arrow_left), contentDescription = "Back", tint = TextPrimary)
-            }
-            Text(text = "Messages", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.padding(start = 8.dp))
-        }
-
         // Chat Search Bar
         OutlinedTextField(
             value = searchQuery,
@@ -101,7 +94,8 @@ fun ChatListScreen(
 
         Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
             LazyColumn(
-                contentPadding = PaddingValues(bottom = 24.dp)
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (filteredChats.isEmpty() && !isLoading) {
                     item {
@@ -116,70 +110,65 @@ fun ChatListScreen(
                 }
 
                 items(filteredChats) { chat ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onNavigateToChat(chat.id) }
-                            .padding(horizontal = 20.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Card(
+                        onClick = { onNavigateToChat(chat.id) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = CardDefaults.cardColors(containerColor = BackgroundSecondary),
+                        border = BorderStroke(1.dp, BorderLight),
+                        elevation = CardDefaults.cardElevation(0.dp)
                     ) {
-                        // Avatar with Presence Dot
-                        Box(modifier = Modifier.size(56.dp)) {
-                            Box(
-                                modifier = Modifier
-                                    .size(52.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.LightGray)
-                            ) {
-                                if (!chat.participantAvatar.isNullOrBlank()) {
-                                    AsyncImage(
-                                        model = chat.participantAvatar,
-                                        contentDescription = chat.participantName,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                } else {
-                                    Icon(
-                                        painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_user),
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.align(Alignment.Center)
-                                    )
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(modifier = Modifier.size(58.dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(54.dp)
+                                        .clip(CircleShape)
+                                        .background(PrimaryAccent.copy(alpha = 0.08f))
+                                ) {
+                                    if (!chat.participantAvatar.isNullOrBlank()) {
+                                        AsyncImage(
+                                            model = chat.participantAvatar,
+                                            contentDescription = chat.participantName,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else {
+                                        Icon(
+                                            painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_user),
+                                            contentDescription = null,
+                                            tint = PrimaryAccent,
+                                            modifier = Modifier.align(Alignment.Center)
+                                        )
+                                    }
                                 }
                             }
 
-                            // Presence Indicator Dot
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .size(14.dp)
-                                    .background(Color.White, CircleShape)
-                                    .padding(2.dp)
-                                    .background(Color(0xFF22C55E), CircleShape)
-                            )
-                        }
+                            Spacer(modifier = Modifier.width(14.dp))
 
-                        Spacer(modifier = Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(text = chat.participantName, fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 17.sp)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = chat.lastMessage,
+                                    color = if (chat.unreadCount > 0) TextPrimary else TextTertiary,
+                                    fontWeight = if (chat.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                            }
 
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = chat.participantName, fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 17.sp)
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = chat.lastMessage,
-                                color = if (chat.unreadCount > 0) TextPrimary else Color.Gray,
-                                fontWeight = if (chat.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
-                                fontSize = 14.sp,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                            )
-                        }
-
-                        if (chat.unreadCount > 0) {
-                            Box(
-                                modifier = Modifier.size(24.dp).clip(CircleShape).background(PrimaryAccent),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(text = chat.unreadCount.toString(), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            if (chat.unreadCount > 0) {
+                                Box(
+                                    modifier = Modifier.size(26.dp).clip(CircleShape).background(PrimaryAccent),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(text = chat.unreadCount.toString(), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }

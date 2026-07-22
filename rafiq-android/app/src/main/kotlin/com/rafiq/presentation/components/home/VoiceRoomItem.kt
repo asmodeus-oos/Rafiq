@@ -15,6 +15,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.rafiq.domain.model.VoiceRoom
+import com.rafiq.presentation.theme.AccentBadge
+import com.rafiq.presentation.theme.AccentSurface
+import com.rafiq.presentation.theme.PrimaryAccent
 
 @Composable
 fun VoiceRoomItem(
@@ -28,7 +31,7 @@ fun VoiceRoomItem(
             .height(160.dp),
         onClick = onClick,
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        colors = CardDefaults.cardColors(containerColor = AccentSurface)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -38,7 +41,7 @@ fun VoiceRoomItem(
             ) {
                 // Category Tag
                 Surface(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                    color = AccentBadge,
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(
@@ -46,7 +49,7 @@ fun VoiceRoomItem(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        color = PrimaryAccent
                     )
                 }
 
@@ -56,13 +59,13 @@ fun VoiceRoomItem(
                         painter = androidx.compose.ui.res.painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_users),
                         contentDescription = null,
                         modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = PrimaryAccent
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = "${room.participantCount}",
                         fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = PrimaryAccent
                     )
                 }
             }
@@ -89,13 +92,12 @@ fun VoiceRoomItem(
                 // Host Avatars (Mock for now)
                 Box(contentAlignment = Alignment.CenterStart) {
                     repeat(3) { index ->
-                        Box(
+                    Box(
                             modifier = Modifier
                                 .padding(start = (index * 16).dp)
                                 .size(28.dp)
                                 .clip(CircleShape)
-                                .background(Color.LightGray)
-                                .background(MaterialTheme.colorScheme.surface, CircleShape)
+                                .background(PrimaryAccent.copy(alpha = 0.08f), CircleShape)
                                 .padding(1.dp)
                                 .clip(CircleShape)
                         )
@@ -108,7 +110,7 @@ fun VoiceRoomItem(
                     Row(
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF22C55E).copy(alpha = 0.1f))
+                            .background(PrimaryAccent.copy(alpha = 0.12f))
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -116,12 +118,12 @@ fun VoiceRoomItem(
                             modifier = Modifier
                                 .size(6.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFF22C55E))
+                                .background(PrimaryAccent)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "Live",
-                            color = Color(0xFF22C55E),
+                            color = PrimaryAccent,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.ExtraBold
                         )

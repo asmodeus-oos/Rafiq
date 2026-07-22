@@ -153,8 +153,8 @@ fun MessageBubble(
                     }
                 )
                 if (isMe) {
-                    DropdownMenuItem(
-                        text = { Text("Delete for everyone", color = androidx.compose.ui.graphics.Color.Red) },
+                DropdownMenuItem(
+                        text = { Text("Delete for everyone", color = PrimaryAccent) },
                         onClick = {
                             showMenu = false
                             onDelete(message)
@@ -219,10 +219,24 @@ fun MessageBubble(
                     }
 
                     if (!message.textContent.isNullOrBlank()) {
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        val isLocationMsg = message.textContent.contains("maps.google.com") || message.textContent.contains("google.com/maps")
                         Text(
-                            text = message.textContent ?: "",
-                            color = textColor,
-                            fontSize = 16.sp
+                            text = message.textContent,
+                            color = if (isLocationMsg) PrimaryAccent else textColor,
+                            fontWeight = if (isLocationMsg) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
+                            fontSize = 16.sp,
+                            modifier = if (isLocationMsg) {
+                                Modifier.clickable {
+                                    try {
+                                        val url = message.textContent.lines().firstOrNull { it.contains("http") }?.trim()
+                                        if (!url.isNullOrBlank()) {
+                                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                                            context.startActivity(intent)
+                                        }
+                                    } catch (e: Exception) { e.printStackTrace() }
+                                }
+                            } else Modifier
                         )
                     }
                     

@@ -11,14 +11,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rafiq.presentation.theme.PrimaryAccent
-import com.rafiq.presentation.theme.TertiaryAccent
+import com.rafiq.presentation.theme.AccentSurfaceStrong
+import com.rafiq.presentation.theme.AccentSurface
+import com.rafiq.presentation.theme.TextPrimary
 
 @Composable
 fun DualToneButton(
@@ -27,8 +28,6 @@ fun DualToneButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     height: Dp = 56.dp,
-    startColor: Color = PrimaryAccent,
-    endColor: Color = TertiaryAccent,
     leadingIcon: @Composable (() -> Unit)? = null
 ) {
     var isPressed by remember { mutableStateOf(false) }
@@ -38,18 +37,15 @@ fun DualToneButton(
         label = "buttonScale"
     )
 
-    val gradientBrush = if (enabled) {
-        Brush.horizontalGradient(listOf(startColor, endColor))
-    } else {
-        Brush.horizontalGradient(listOf(startColor.copy(alpha = 0.45f), endColor.copy(alpha = 0.45f)))
-    }
+    val containerColor = if (enabled) AccentSurfaceStrong else AccentSurface
+    val contentColor = if (enabled) PrimaryAccent else PrimaryAccent.copy(alpha = 0.6f)
 
     Box(
         modifier = modifier
             .scale(scale)
             .height(height)
             .clip(RoundedCornerShape(18.dp))
-            .background(gradientBrush)
+            .background(containerColor)
             .clickable(
                 enabled = enabled,
                 onClick = onClick
@@ -67,7 +63,7 @@ fun DualToneButton(
             }
             Text(
                 text = text,
-                color = Color.White,
+                color = contentColor,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold
             )

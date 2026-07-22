@@ -15,8 +15,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+import com.rafiq.domain.model.User
+
 data class PostFeedUiState(
     val posts: List<Post> = emptyList(),
+    val users: Map<String, User> = emptyMap(),
     val isLoading: Boolean = false,
     val error: String? = null
 )
@@ -48,24 +51,46 @@ class PostFeedViewModel @Inject constructor(
                     .decodeList<Post>()
                     .sortedByDescending { it.timestamp }
 
-                // Annotate which ones the current user has liked
-                val annotatedPosts = if (currentUserId != null && posts.isNotEmpty()) {
-                    val postIds = posts.map { it.id }
-                    val likedIds = try {
-                        supabaseClient.postgrest["likes"]
-                            .select { filter { isIn("post_id", postIds); eq("user_id", currentUserId) } }
-                            .decodeList<com.rafiq.domain.model.Like>()
-                            .map { it.postId }.toSet()
-                    } catch (e: Exception) { emptySet() }
-
-                    posts.map { post ->
-                        if (post.id in likedIds) {
-                            post.apply { likedBy = mapOf(currentUserId to true) }
-                        } else post
+                val userIds = posts.map { it.userId }.filter { it.isNotBlank() }.distinct()
+                val usersMap = if (userIds.isNotEmpty()) {
+                    try {
+                        supabaseClient.postgrest["users"]
+                            .select(Columns.ALL) { filter { isIn("id", userIds) } }
+                            .decodeList<User>()
+                            .associateBy { it.id }
+                    } catch (e: Exception) {
+                        emptyMap()
                     }
-                } else posts
+                } else emptyMap()
 
-                _uiState.value = _uiState.value.copy(posts = annotatedPosts, isLoading = false)
+                val postIds = posts.map { it.id }
+                val likeRecords = if (postIds.isNotEmpty()) {
+                    try {
+                        supabaseClient.postgrest["likes"]
+                            .select(Columns.ALL) { filter { isIn("post_id", postIds) } }
+                            .decodeList<com.rafiq.domain.model.Like>()
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                } else emptyList()
+
+                val likeCounts = likeRecords.groupingBy { it.postId }.eachCount()
+                val likedIds = if (currentUserId != null) {
+                    likeRecords.filter { it.userId == currentUserId }.map { it.postId }.toSet()
+                } else emptySet()
+
+                val annotatedPosts = posts.map { post ->
+                    post.copy(
+                        likesCount = likeCounts[post.id] ?: post.likesCount,
+                        likedBy = if (post.id in likedIds && currentUserId != null) mapOf(currentUserId to true) else post.likedBy
+                    )
+                }
+
+                _uiState.value = _uiState.value.copy(
+                    posts = annotatedPosts,
+                    users = usersMap,
+                    isLoading = false
+                )
             } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.value = _uiState.value.copy(isLoading = false, error = e.message)

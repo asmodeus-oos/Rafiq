@@ -47,13 +47,18 @@ fun ChatDetailScreen(
     onTyping: () -> Unit = {},
     onCallClick: () -> Unit = {},
     onVideoCallClick: () -> Unit = {},
+    onNavigateToProfile: (String) -> Unit = {},
     onBack: () -> Unit
 ) {
     val chatViewModel: ChatViewModel = androidx.hilt.navigation.compose.hiltViewModel()
     val icebreakers by chatViewModel.icebreakers.collectAsState()
+    val currentUser by chatViewModel.currentUser.collectAsState()
 
     var text by remember { mutableStateOf("") }
     var showAttachmentSheet by remember { mutableStateOf(false) }
+    var showCameraSheet by remember { mutableStateOf(false) }
+    var showEmojiPicker by remember { mutableStateOf(false) }
+    var showGiftSheet by remember { mutableStateOf(false) }
     var replyingToMessage by remember { mutableStateOf<Message?>(null) }
     var isRecording by remember { mutableStateOf(false) }
     var isRecordingLocked by remember { mutableStateOf(false) }
@@ -74,6 +79,37 @@ fun ChatDetailScreen(
             repeatMode = RepeatMode.Reverse
         )
     )
+
+    val locationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            try {
+                val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? android.location.LocationManager
+                val loc = locationManager?.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                    ?: locationManager?.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                val lat = loc?.latitude ?: 30.0444
+                val lng = loc?.longitude ?: 31.2357
+                onSendMessage("📍 Shared Location:\nhttps://maps.google.com/?q=$lat,$lng", null, false, replyingToMessage?.id)
+                showAttachmentSheet = false
+                replyingToMessage = null
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        } else {
+            android.widget.Toast.makeText(context, "Location permission is required to share GPS location", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val cameraPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            showCameraSheet = true
+        } else {
+            android.widget.Toast.makeText(context, "Camera permission is required", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val stopAndSendRecording = {
         isRecording = false
@@ -124,12 +160,61 @@ fun ChatDetailScreen(
         }
     }
 
+    if (showCameraSheet) {
+        com.rafiq.presentation.components.chat.InAppCameraDialog(
+            onDismiss = { showCameraSheet = false },
+            onPhotoCaptured = { uri ->
+                onSendMessage(null, uri.toString(), false, replyingToMessage?.id)
+                showCameraSheet = false
+                replyingToMessage = null
+            }
+        )
+    }
+
+    if (showEmojiPicker) {
+        com.rafiq.presentation.components.chat.EmojiPickerSheet(
+            onDismiss = { showEmojiPicker = false },
+            onEmojiSelect = { emoji ->
+                text += emoji
+                showEmojiPicker = false
+            }
+        )
+    }
+
+    if (showGiftSheet && targetUser != null) {
+        com.rafiq.presentation.components.chat.GiftPickerSheet(
+            userDiamonds = currentUser?.diamonds?.toInt() ?: 500,
+            onDismiss = { showGiftSheet = false },
+            onSendGift = { gift ->
+                chatViewModel.sendGift(
+                    receiverId = targetUser.id,
+                    giftName = gift.name,
+                    giftEmoji = gift.emoji,
+                    diamondCost = gift.diamonds,
+                    onSuccess = {
+                        showGiftSheet = false
+                        android.widget.Toast.makeText(context, "Sent ${gift.name} (${gift.diamonds} 💎)!", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    onError = { err ->
+                        android.widget.Toast.makeText(context, err, android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                )
+            }
+        )
+    }
+
     if (showAttachmentSheet) {
         ModalBottomSheet(onDismissRequest = { showAttachmentSheet = false }) {
             Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
                 Text("Attachments", fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.padding(bottom = 16.dp))
                 Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { }) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.clickable {
+                            showAttachmentSheet = false
+                            showGiftSheet = true
+                        }
+                    ) {
                         Box(modifier = Modifier.size(56.dp).clip(CircleShape).background(Color(0xFFE91E63).copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
                             Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_gift), contentDescription = "Gift", tint = Color(0xFFE91E63))
                         }
@@ -143,7 +228,62 @@ fun ChatDetailScreen(
                         }
                         Text("Gallery", fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                     }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { }) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.clickable {
+                            val hasFine = context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                            val hasCoarse = context.checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+                            if (hasFine || hasCoarse) {
+                                try {
+                                    val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? android.location.LocationManager
+                                    val isGpsEnabled = locationManager?.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) == true
+                                    val isNetworkEnabled = locationManager?.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER) == true
+
+                                    if (!isGpsEnabled && !isNetworkEnabled) {
+                                        android.widget.Toast.makeText(context, "Please turn on GPS Location Services", android.widget.Toast.LENGTH_LONG).show()
+                                        val settingsIntent = android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                                        context.startActivity(settingsIntent)
+                                        return@clickable
+                                    }
+
+                                    val sendLoc: (Double, Double) -> Unit = { lat, lng ->
+                                        onSendMessage("📍 Location:\nhttps://www.google.com/maps/search/?api=1&query=$lat,$lng", null, false, replyingToMessage?.id)
+                                        showAttachmentSheet = false
+                                        replyingToMessage = null
+                                    }
+
+                                    val gpsLoc = locationManager?.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                                    val netLoc = locationManager?.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                                    val passLoc = locationManager?.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER)
+
+                                    val bestLoc = listOfNotNull(gpsLoc, netLoc, passLoc).maxByOrNull { it.time }
+
+                                    if (bestLoc != null) {
+                                        sendLoc(bestLoc.latitude, bestLoc.longitude)
+                                    } else {
+                                        // Active 1-shot location listener
+                                        val listener = object : android.location.LocationListener {
+                                            override fun onLocationChanged(location: android.location.Location) {
+                                                sendLoc(location.latitude, location.longitude)
+                                                try { locationManager?.removeUpdates(this) } catch (e: Exception) {}
+                                            }
+                                            override fun onProviderEnabled(provider: String) {}
+                                            override fun onProviderDisabled(provider: String) {}
+                                        }
+
+                                        val provider = if (isGpsEnabled) android.location.LocationManager.GPS_PROVIDER else android.location.LocationManager.NETWORK_PROVIDER
+                                        locationManager?.requestLocationUpdates(provider, 0L, 0f, listener, context.mainLooper)
+                                    }
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                    android.widget.Toast.makeText(context, "Could not fetch location", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                locationPermissionLauncher.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                            }
+                        }
+                    ) {
                         Box(modifier = Modifier.size(56.dp).clip(CircleShape).background(Color(0xFF4CAF50).copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
                             Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_map_pin), contentDescription = "Location", tint = Color(0xFF4CAF50))
                         }
@@ -170,19 +310,35 @@ fun ChatDetailScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left Card: Back & Avatar
+            // Left Card: Back Button
             Surface(
+                onClick = onBack,
                 color = Color.White,
                 shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.height(48.dp)
+                modifier = Modifier.size(48.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 8.dp).clickable { onBack() }) {
-                    IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
-                        Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_chevron_left), contentDescription = "Back", tint = TextPrimary, modifier = Modifier.size(24.dp))
-                    }
-                    Box {
-                        val avatarUrl = targetUser?.avatar
-                        Box(modifier = Modifier.size(32.dp).clip(CircleShape).background(Color.Gray)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_chevron_left),
+                        contentDescription = "Back",
+                        tint = TextPrimary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Avatar Card (Separate rounded ripple)
+            Surface(
+                onClick = { targetUser?.id?.let(onNavigateToProfile) },
+                color = Color.White,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.size(48.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    val avatarUrl = targetUser?.avatar
+                    Box(modifier = Modifier.size(36.dp).clip(CircleShape).background(Color.Gray)) {
                         if (!avatarUrl.isNullOrBlank()) {
                             coil3.compose.AsyncImage(
                                 model = avatarUrl,
@@ -191,7 +347,12 @@ fun ChatDetailScreen(
                                 modifier = Modifier.fillMaxSize()
                             )
                         } else {
-                            Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_user), contentDescription = null, tint = Color.White, modifier = Modifier.align(Alignment.Center).size(16.dp))
+                            Icon(
+                                painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_user),
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.align(Alignment.Center).size(18.dp)
+                            )
                         }
                     }
                     val statusColor = when (targetUser?.onlineStatus) {
@@ -202,20 +363,24 @@ fun ChatDetailScreen(
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
+                            .padding(end = 4.dp, bottom = 4.dp)
                             .size(10.dp)
                             .background(Color.White, CircleShape)
                             .padding(2.dp)
                             .background(statusColor, CircleShape)
-                        )
-                    }
+                    )
                 }
             }
 
-            // Center Card: Title
+            // Center Card: Title (Clickable to open profile with rounded ripple)
             Surface(
+                onClick = { targetUser?.id?.let(onNavigateToProfile) },
                 color = Color.White,
                 shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.height(48.dp).weight(1f).padding(horizontal = 8.dp)
+                modifier = Modifier
+                    .height(48.dp)
+                    .weight(1f)
+                    .padding(horizontal = 8.dp)
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     val displayName = targetUser?.name?.takeIf { it.isNotBlank() } ?: "User Name"
@@ -426,7 +591,13 @@ fun ChatDetailScreen(
                     IconButton(onClick = { showAttachmentSheet = true }) {
                         Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_plus), contentDescription = "Add", tint = Color.Gray)
                     }
-                    IconButton(onClick = { /* Open Camera */ }) {
+                    IconButton(onClick = {
+                        if (context.checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                            showCameraSheet = true
+                        } else {
+                            cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                        }
+                    }) {
                         Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_camera), contentDescription = "Camera", tint = Color.Gray)
                     }
                     
@@ -437,7 +608,7 @@ fun ChatDetailScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(Color.Red).alpha(dotAlpha))
+                                Box(modifier = Modifier.size(12.dp).clip(CircleShape).background(PrimaryAccent).alpha(dotAlpha))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     String.format("%02d:%02d", recordingDuration / 60, recordingDuration % 60), 
@@ -446,10 +617,10 @@ fun ChatDetailScreen(
                                 )
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_chevron_up), contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
-                                Text("Lock", color = Color.Gray, fontSize = 12.sp)
+                                Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_chevron_up), contentDescription = null, tint = PrimaryAccent, modifier = Modifier.size(16.dp))
+                                Text("Lock", color = PrimaryAccent, fontSize = 12.sp)
                             }
-                            Text("< Slide to cancel", color = Color.Gray, fontSize = 14.sp)
+                            Text("< Slide to cancel", color = PrimaryAccent, fontSize = 14.sp)
                         }
                     } else {
                     OutlinedTextField(
@@ -468,7 +639,7 @@ fun ChatDetailScreen(
                             unfocusedContainerColor = Color(0xFFF1F3F4)
                         ),
                         trailingIcon = {
-                            IconButton(onClick = { /* Toggle Emoji Keyboard */ }) {
+                            IconButton(onClick = { showEmojiPicker = true }) {
                                 Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_smile), contentDescription = "Emoji", tint = Color.Gray)
                             }
                         }
@@ -494,7 +665,7 @@ fun ChatDetailScreen(
                             .offset { androidx.compose.ui.unit.IntOffset(micOffsetX.value.roundToInt(), micOffsetY.value.roundToInt()) }
                             .size(if (isRecording) 72.dp else 56.dp)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(if (isRecording) Color.Red else PrimaryAccent.copy(alpha = 0.15f))
+                            .background(PrimaryAccent.copy(alpha = if (isRecording) 0.20f else 0.15f))
                             .pointerInput(Unit) {
                                 awaitPointerEventScope {
                                     while (true) {

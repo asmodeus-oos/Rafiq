@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rafiq.domain.model.User
 import com.rafiq.domain.model.VoiceRoom
+import com.rafiq.domain.model.SwipeAction
 import com.rafiq.domain.repository.DiscoveryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,15 +62,22 @@ class HomeFeedViewModel @Inject constructor(
     }
 
     fun likeUser(userId: String) {
-        // Optimistically remove from the recommended list
-        _uiState.value = _uiState.value.copy(
-            recommendedPartners = _uiState.value.recommendedPartners.filter { it.id != userId }
-        )
+        viewModelScope.launch {
+            discoveryRepository.recordSwipe(userId, SwipeAction.LIKE)
+            _uiState.value = _uiState.value.copy(
+                recommendedPartners = _uiState.value.recommendedPartners.filter { it.id != userId }
+            )
+            refreshFeed()
+        }
     }
 
     fun skipUser(userId: String) {
-        _uiState.value = _uiState.value.copy(
-            recommendedPartners = _uiState.value.recommendedPartners.filter { it.id != userId }
-        )
+        viewModelScope.launch {
+            discoveryRepository.recordSwipe(userId, SwipeAction.SKIP)
+            _uiState.value = _uiState.value.copy(
+                recommendedPartners = _uiState.value.recommendedPartners.filter { it.id != userId }
+            )
+            refreshFeed()
+        }
     }
 }

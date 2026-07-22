@@ -107,7 +107,7 @@ fun EditProfileScreen(
                     modifier = Modifier
                         .height(44.dp)
                         .clip(RoundedCornerShape(16.dp))
-                        .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(com.rafiq.presentation.theme.PrimaryAccent, com.rafiq.presentation.theme.TertiaryAccent)))
+                        .background(com.rafiq.presentation.theme.PrimaryAccent.copy(alpha = 0.12f))
                         .clickable {
                             if (isSaving) return@clickable
                             isSaving = true
@@ -195,7 +195,7 @@ fun EditProfileScreen(
                         .padding(8.dp)
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(com.rafiq.presentation.theme.PrimaryAccent, com.rafiq.presentation.theme.TertiaryAccent)))
+                        .background(com.rafiq.presentation.theme.PrimaryAccent.copy(alpha = 0.12f))
                         .clickable { coverPickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                     contentAlignment = Alignment.Center
                 ) {
@@ -225,7 +225,7 @@ fun EditProfileScreen(
                         .size(36.dp)
                         .offset(x = 4.dp, y = 4.dp)
                         .clip(CircleShape)
-                        .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(com.rafiq.presentation.theme.PrimaryAccent, com.rafiq.presentation.theme.TertiaryAccent)))
+                        .background(com.rafiq.presentation.theme.PrimaryAccent.copy(alpha = 0.12f))
                         .clickable { photoPickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                     contentAlignment = Alignment.Center
                 ) {
@@ -257,20 +257,16 @@ fun EditProfileScreen(
                 val presetHobbies = listOf("Football", "Basketball", "Gym", "Running", "Gaming", "Coding", "Technology", "Reading", "Photography", "Movies", "TV Shows", "Anime", "Music", "Singing", "Dancing", "Travel", "Cooking", "Coffee", "Fashion", "Pets", "Meditation", "Volunteering", "Entrepreneurship", "Concerts", "Fitness")
                 presetHobbies.forEach { hobby ->
                     val selected = hobbies.contains(hobby)
-                    val bgBrush = if (selected) {
-                        androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(com.rafiq.presentation.theme.PrimaryAccent, com.rafiq.presentation.theme.TertiaryAccent))
-                    } else {
-                        androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.surfaceVariant))
-                    }
+                    val bgColor = if (selected) com.rafiq.presentation.theme.PrimaryAccent.copy(alpha = 0.12f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.08f)
                     Box(
                         modifier = Modifier
                             .height(34.dp)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(bgBrush)
+                            .background(bgColor)
                             .clickable { hobbies = if (selected) hobbies - hobby else hobbies + hobby },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(hobby, color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.padding(horizontal = 14.dp))
+                        Text(hobby, color = if (selected) com.rafiq.presentation.theme.PrimaryAccent else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.padding(horizontal = 14.dp))
                     }
                 }
                 
@@ -279,11 +275,11 @@ fun EditProfileScreen(
                         modifier = Modifier
                             .height(34.dp)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(com.rafiq.presentation.theme.PrimaryAccent, com.rafiq.presentation.theme.TertiaryAccent)))
+                            .background(com.rafiq.presentation.theme.PrimaryAccent.copy(alpha = 0.12f))
                             .clickable { hobbies = hobbies - hobby },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("$hobby (x)", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 14.dp))
+                        Text("$hobby (x)", color = com.rafiq.presentation.theme.PrimaryAccent, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 14.dp))
                     }
                 }
             }

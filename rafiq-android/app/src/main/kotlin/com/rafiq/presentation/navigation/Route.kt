@@ -31,7 +31,7 @@ sealed class Route(val route: String) {
     
     // Call Flow
     object RandomCallMatching : Route("random_call_matching")
-    object ActiveCall : Route("active_call/{roomId}") {
-        fun createRoute(roomId: String): String = "active_call/$roomId"
+    object ActiveCall : Route("active_call/{roomId}?isVideo={isVideo}") {
+        fun createRoute(roomId: String, isVideo: Boolean = false): String = "active_call/$roomId?isVideo=$isVideo"
     }
 }

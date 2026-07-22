@@ -28,8 +28,6 @@ import kotlinx.coroutines.launch
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -45,17 +43,21 @@ fun RafiqNavGraph(
     deepLinkRoute: String? = null
 ) {
     val coroutineScope = rememberCoroutineScope()
-    val startDestination = deepLinkRoute ?: Route.Auth.route
+    val startDestination = deepLinkRoute ?: if (supabaseClient.auth.currentSessionOrNull() != null) {
+        Route.Home.route
+    } else {
+        Route.Auth.route
+    }
     
-    NavHost(
-        navController = navController,
-        startDestination = startDestination,
-        enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400)) },
-        exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400)) },
-        popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400)) },
-        popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400)) }
-    ) {
-
+    Box(modifier = Modifier.fillMaxSize()) {
+        NavHost(
+            navController = navController,
+            startDestination = startDestination,
+            enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400)) },
+            exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400)) },
+            popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400)) },
+            popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400)) }
+        ) {
         composable(Route.Auth.route) {
             AuthScreen(
                 onAuthSuccess = {
@@ -110,7 +112,11 @@ fun RafiqNavGraph(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToEditProfile = { navController.navigate(Route.EditProfile.route) },
                 onNavigateToPostDetails = { postId -> navController.navigate(Route.PostDetails.createRoute(postId)) },
-                onNavigateToChat = { targetUserId -> navController.navigate(Route.ChatDetail.createRoute(targetUserId)) }
+                onNavigateToChat = { targetUserId ->
+                    if (targetUserId.isNotBlank()) {
+                        navController.navigate(Route.ChatDetail.createRoute(targetUserId))
+                    }
+                }
             )
         }
         composable(
@@ -145,8 +151,16 @@ fun RafiqNavGraph(
             NotificationScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToPost = { postId -> navController.navigate(Route.PostDetails.createRoute(postId)) },
-                onNavigateToProfile = { userId -> navController.navigate(Route.Profile.createRoute(userId)) },
-                onNavigateToChat = { userId -> navController.navigate(Route.ChatDetail.createRoute(userId)) }
+                onNavigateToProfile = { userId ->
+                    if (userId.isNotBlank()) {
+                        navController.navigate(Route.Profile.createRoute(userId))
+                    }
+                },
+                onNavigateToChat = { userId ->
+                    if (userId.isNotBlank()) {
+                        navController.navigate(Route.ChatDetail.createRoute(userId))
+                    }
+                }
             )
         }
         composable(Route.ChatList.route) {
@@ -206,15 +220,20 @@ fun RafiqNavGraph(
                 onDeleteMessage = { chatViewModel.deleteMessageForEveryone(it) },
                 onTyping = { chatViewModel.sendTypingEvent() },
                 onBack = { navController.popBackStack() },
-                onCallClick = { navController.navigate(Route.ActiveCall.createRoute(chatRoomId)) },
-                onVideoCallClick = { navController.navigate(Route.ActiveCall.createRoute(chatRoomId)) }
+                onNavigateToProfile = { userId ->
+                    if (userId.isNotBlank()) {
+                        navController.navigate(Route.Profile.createRoute(userId))
+                    }
+                },
+                onCallClick = { navController.navigate(Route.ActiveCall.createRoute(chatRoomId, isVideo = false)) },
+                onVideoCallClick = { navController.navigate(Route.ActiveCall.createRoute(chatRoomId, isVideo = true)) }
             )
         }
         composable(Route.RandomCallMatching.route) {
             RandomCallMatchingScreen(
                 onCancel = { navController.popBackStack() },
                 onCallConnected = { roomId ->
-                    navController.navigate(Route.ActiveCall.createRoute(roomId)) {
+                    navController.navigate(Route.ActiveCall.createRoute(roomId, isVideo = false)) {
                         popUpTo(Route.RandomCallMatching.route) { inclusive = true }
                     }
                 }
@@ -226,12 +245,23 @@ fun RafiqNavGraph(
                 navArgument("roomId") {
                     type = NavType.StringType
                     defaultValue = "default_room"
+                },
+                navArgument("isVideo") {
+                    type = NavType.BoolType
+                    defaultValue = false
                 }
             )
         ) {
             com.rafiq.presentation.screen.call.ActiveCallScreen(
-                onCallEnded = { navController.popBackStack(Route.Home.route, false) }
+                onCallEnded = { navController.popBackStack() }
             )
         }
     }
+
+    com.rafiq.presentation.components.call.GlobalFloatingCallOverlay(
+        onReopenCall = { roomId, isVideo ->
+            navController.navigate(Route.ActiveCall.createRoute(roomId, isVideo))
+        }
+    )
+}
 }

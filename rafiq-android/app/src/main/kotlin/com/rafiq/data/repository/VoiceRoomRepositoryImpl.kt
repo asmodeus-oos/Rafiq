@@ -31,12 +31,7 @@ class VoiceRoomRepositoryImpl @Inject constructor(
                     .decodeList<VoiceRoom>()
                 rooms.sortedByDescending { it.participantCount }
             } catch (e: Exception) {
-                // Fallback to active dynamic rooms
-                listOf(
-                    VoiceRoom(id = "room_1", title = "Late Night Chill 🌙", description = "Talking music & tech", hostId = "h1", participantCount = 18, activeSpeakers = 4),
-                    VoiceRoom(id = "room_2", title = "Dating & Companionship 💕", description = "Matchmaking Cairo", hostId = "h2", type = RoomType.DATING, participantCount = 32, activeSpeakers = 2),
-                    VoiceRoom(id = "room_3", title = "Gaming Lounge 🎮", description = "LFG Valorant / MLBB", hostId = "h3", type = RoomType.GAMING, participantCount = 12, activeSpeakers = 5)
-                )
+                emptyList()
             }
         }
 

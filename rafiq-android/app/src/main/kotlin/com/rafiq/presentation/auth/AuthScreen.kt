@@ -30,6 +30,8 @@ import androidx.activity.compose.BackHandler
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.rafiq.R
 import com.rafiq.presentation.components.common.RafiqTextField
+import com.rafiq.presentation.theme.AccentSurface
+import com.rafiq.presentation.theme.AccentSurfaceSelected
 
 @Composable
 fun RafiqDropdown(
@@ -178,10 +180,7 @@ fun AuthScreen(
                             .weight(1f)
                             .fillMaxHeight()
                             .clip(RoundedCornerShape(18.dp))
-                            .background(
-                                if (isLoginMode) androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(com.rafiq.presentation.theme.PrimaryAccent, com.rafiq.presentation.theme.TertiaryAccent))
-                                else androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
-                            )
+                            .background(if (isLoginMode) AccentSurfaceSelected else Color.Transparent)
                             .clickable {
                                 if (!isLoginMode) {
                                     isLoginMode = true
@@ -194,7 +193,7 @@ fun AuthScreen(
                             text = "Login",
                             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                             fontSize = 15.sp,
-                            color = if (isLoginMode) Color.White else com.rafiq.presentation.theme.TextPrimary.copy(alpha = 0.6f)
+                            color = if (isLoginMode) com.rafiq.presentation.theme.PrimaryAccent else com.rafiq.presentation.theme.TextPrimary.copy(alpha = 0.6f)
                         )
                     }
                     
@@ -203,10 +202,7 @@ fun AuthScreen(
                             .weight(1f)
                             .fillMaxHeight()
                             .clip(RoundedCornerShape(18.dp))
-                            .background(
-                                if (!isLoginMode) androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(com.rafiq.presentation.theme.PrimaryAccent, com.rafiq.presentation.theme.TertiaryAccent))
-                                else androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
-                            )
+                            .background(if (!isLoginMode) AccentSurfaceSelected else Color.Transparent)
                             .clickable {
                                 if (isLoginMode) {
                                     isLoginMode = false
@@ -219,7 +215,7 @@ fun AuthScreen(
                             text = "Sign Up",
                             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                             fontSize = 15.sp,
-                            color = if (!isLoginMode) Color.White else com.rafiq.presentation.theme.TextPrimary.copy(alpha = 0.6f)
+                            color = if (!isLoginMode) com.rafiq.presentation.theme.PrimaryAccent else com.rafiq.presentation.theme.TextPrimary.copy(alpha = 0.6f)
                         )
                     }
                 }

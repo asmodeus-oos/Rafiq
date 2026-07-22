@@ -32,14 +32,26 @@ class NotificationRepositoryImpl @Inject constructor(
         val fetchNotifications = suspend {
             try {
                 val notifications = supabaseClient.postgrest["notifications"]
-                    .select(Columns.list("*, users!notifications_sender_id_fkey(*)")) {
-                        filter {
-                            eq("recipient_id", currentUserId)
-                        }
+                    .select(Columns.ALL) {
+                        filter { eq("recipient_id", currentUserId) }
                     }
                     .decodeList<NotificationDto>()
-                    
-                notifications.map { it.toDomain() }.sortedByDescending { it.timestamp }
+
+                val senderIds = notifications.map { it.senderId }.distinct()
+                val senders = if (senderIds.isNotEmpty()) {
+                    try {
+                        supabaseClient.postgrest["users"]
+                            .select(Columns.ALL) { filter { isIn("id", senderIds) } }
+                            .decodeList<User>()
+                            .associateBy { it.id }
+                    } catch (e: Exception) {
+                        emptyMap()
+                    }
+                } else emptyMap()
+
+                notifications.map { dto ->
+                    dto.toDomain().copy(sender = senders[dto.senderId])
+                }.sortedByDescending { it.timestamp }
             } catch (e: Exception) {
                 e.printStackTrace()
                 emptyList()
@@ -83,15 +95,26 @@ class NotificationRepositoryImpl @Inject constructor(
         if (currentUserId == recipientId) return // Don't notify yourself
 
         try {
+            // Deduplicate follow notifications
+            if (type == "follow") {
+                val existingCount = (supabaseClient.postgrest["notifications"]
+                    .select {
+                        filter {
+                            eq("recipient_id", recipientId)
+                            eq("sender_id", currentUserId)
+                            eq("type", "follow")
+                        }
+                    }
+                    .countOrNull() ?: 0)
+                if (existingCount > 0) return
+            }
+
             val notificationJson = buildJsonObject {
                 put("id", java.util.UUID.randomUUID().toString())
                 put("recipient_id", recipientId)
                 put("sender_id", currentUserId)
                 put("type", type)
-                // NOTE: No 'timestamp' field — the DB column is 'created_at' with a DEFAULT.
-                // Inserting a non-existent column causes PostgREST to reject the request.
                 
-                // Use null instead of empty string for UUID columns
                 if (!postId.isNullOrBlank()) {
                     put("post_id", postId)
                 } else {

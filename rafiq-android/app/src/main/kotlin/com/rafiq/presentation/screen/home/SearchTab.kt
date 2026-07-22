@@ -79,20 +79,26 @@ fun SearchTab(
             return@LaunchedEffect
         }
         isLoading = true
-        delay(400) // Debounce 400ms
+        delay(350) // Debounce 350ms
         try {
             val pattern = "%${query.trim()}%"
-            var fetchedUsers = supabaseClient.postgrest["users"]
-                .select(Columns.ALL) {
-                    filter {
-                        or {
-                            ilike("name", pattern)
-                            ilike("username", pattern)
+            var fetchedUsers = try {
+                supabaseClient.postgrest["users"]
+                    .select(Columns.ALL) {
+                        filter {
+                            or {
+                                ilike("name", pattern)
+                                ilike("username", pattern)
+                                ilike("bio", pattern)
+                                ilike("country", pattern)
+                            }
                         }
                     }
-                }
-                .decodeList<User>()
-                .filter { it.id != currentUserId }
+                    .decodeList<User>()
+                    .filter { it.id != currentUserId }
+            } catch (e: Exception) {
+                emptyList()
+            }
 
             if (filterState.verifiedOnly) {
                 fetchedUsers = fetchedUsers.filter { it.isVerified }
@@ -101,15 +107,20 @@ fun SearchTab(
                 fetchedUsers = fetchedUsers.filter { it.onlineStatus == com.rafiq.domain.model.OnlineStatus.ONLINE }
             }
 
-            users = fetchedUsers.take(25)
+            users = fetchedUsers.take(30)
 
-            posts = supabaseClient.postgrest["posts"]
-                .select(Columns.ALL) {
-                    filter { ilike("text_content", pattern) }
-                }
-                .decodeList<Post>()
-                .sortedByDescending { it.timestamp }
-                .take(25)
+            val fetchedPosts = try {
+                supabaseClient.postgrest["posts"]
+                    .select(Columns.ALL) {
+                        filter { ilike("text_content", pattern) }
+                    }
+                    .decodeList<Post>()
+                    .sortedByDescending { it.timestamp }
+            } catch (e: Exception) {
+                emptyList()
+            }
+
+            posts = fetchedPosts.take(30)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -140,7 +151,7 @@ fun SearchTab(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Search people, posts...", color = Color.Gray) },
+                placeholder = { Text("Search...", color = Color.Gray) },
                 leadingIcon = {
                     Icon(
                         painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_search),
@@ -194,7 +205,7 @@ fun SearchTab(
             ) {
                 Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
                     Text(
-                        "People (${users.size})",
+                        "All (${users.size + posts.size})",
                         modifier = Modifier.padding(vertical = 12.dp),
                         fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal,
                         color = if (selectedTab == 0) PrimaryAccent else Color.Gray
@@ -202,10 +213,18 @@ fun SearchTab(
                 }
                 Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) {
                     Text(
-                        "Posts (${posts.size})",
+                        "People (${users.size})",
                         modifier = Modifier.padding(vertical = 12.dp),
                         fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal,
                         color = if (selectedTab == 1) PrimaryAccent else Color.Gray
+                    )
+                }
+                Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }) {
+                    Text(
+                        "Posts (${posts.size})",
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal,
+                        color = if (selectedTab == 2) PrimaryAccent else Color.Gray
                     )
                 }
             }
@@ -240,21 +259,16 @@ fun SearchTab(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(24.dp))
+                Text("Suggested People", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = TextPrimary)
+                Spacer(modifier = Modifier.height(12.dp))
 
-                Box(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentAlignment = Alignment.Center
+                LazyColumn(
+                    contentPadding = PaddingValues(bottom = 80.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_search),
-                            contentDescription = null,
-                            modifier = Modifier.size(56.dp),
-                            tint = Color.LightGray
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text("Search for people or topics", color = Color.Gray, fontSize = 15.sp)
+                    items(users) { user ->
+                        SearchUserRow(user = user, onClick = { onNavigateToProfile(user.id) })
                     }
                 }
             }
@@ -264,6 +278,32 @@ fun SearchTab(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (selectedTab == 0) {
+                    if (users.isEmpty() && posts.isEmpty()) {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                                Text("No matches found for '$query'", color = Color.Gray)
+                            }
+                        }
+                    } else {
+                        if (users.isNotEmpty()) {
+                            item {
+                                Text("People", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = TextPrimary)
+                            }
+                            items(users.take(5)) { user ->
+                                SearchUserRow(user = user, onClick = { onNavigateToProfile(user.id) })
+                            }
+                        }
+                        if (posts.isNotEmpty()) {
+                            item {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Posts", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp), color = TextPrimary)
+                            }
+                            items(posts.take(10)) { post ->
+                                SearchPostRow(post = post, onClick = { onNavigateToPost(post.id) })
+                            }
+                        }
+                    }
+                } else if (selectedTab == 1) {
                     if (users.isEmpty()) {
                         item {
                             Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -342,6 +382,8 @@ fun SearchUserRow(user: User, onClick: () -> Unit) {
                 }
                 if (user.username.isNotBlank()) {
                     Text("@${user.username}", color = Color.Gray, fontSize = 13.sp)
+                } else if (user.bio.isNotBlank()) {
+                    Text(user.bio, color = Color.Gray, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             Surface(
@@ -436,4 +478,3 @@ fun SearchPostRow(post: Post, onClick: () -> Unit) {
         }
     }
 }
-

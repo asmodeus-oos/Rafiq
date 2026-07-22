@@ -216,8 +216,9 @@ class ModernProfileViewModel @Inject constructor(
                 } else {
                     newLikedBy[uid] = true
                 }
+                val newLikeCount = if (hasLiked) (post.likesCount - 1).coerceAtLeast(0) else post.likesCount + 1
                 post.copy(
-                    likesCount = newLikedBy.size,
+                    likesCount = newLikeCount,
                     likedBy = newLikedBy
                 )
             } else post

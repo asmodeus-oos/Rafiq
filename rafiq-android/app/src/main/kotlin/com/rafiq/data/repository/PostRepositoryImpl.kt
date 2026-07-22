@@ -20,9 +20,34 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import javax.inject.Inject
 
+@kotlinx.serialization.Serializable
+private data class CommentInsertDto(
+    val id: String,
+    @kotlinx.serialization.SerialName("post_id") val postId: String,
+    @kotlinx.serialization.SerialName("user_id") val userId: String? = null,
+    @kotlinx.serialization.SerialName("text_content") val textContent: String,
+    val timestamp: Long,
+    @kotlinx.serialization.SerialName("parent_id") val parentId: String? = null
+)
+
 class PostRepositoryImpl @Inject constructor(
     private val supabaseClient: SupabaseClient
 ) : PostRepository {
+
+    private suspend fun loadLikeCounts(postIds: List<String>): Pair<Map<String, Int>, Map<String, Set<String>>> {
+        if (postIds.isEmpty()) return emptyMap<String, Int>() to emptyMap<String, Set<String>>()
+        return try {
+            val likes = supabaseClient.postgrest["likes"]
+                .select(Columns.ALL) { filter { isIn("post_id", postIds) } }
+                .decodeList<com.rafiq.domain.model.Like>()
+
+            val counts = likes.groupingBy { it.postId }.eachCount()
+            val likedByPost = likes.groupBy({ it.postId }, { it.userId }).mapValues { it.value.toSet() }
+            counts to likedByPost
+        } catch (e: Exception) {
+            emptyMap<String, Int>() to emptyMap<String, Set<String>>()
+        }
+    }
 
     override fun getPostsForUser(userId: String): Flow<List<Post>> = callbackFlow {
         val fetchPosts = suspend {
@@ -32,20 +57,17 @@ class PostRepositoryImpl @Inject constructor(
                     .decodeList<Post>()
                 
                 val currentUserId = supabaseClient.auth.currentUserOrNull()?.id
-                if (currentUserId != null && posts.isNotEmpty()) {
-                    val postIds = posts.map { it.id }
-                    val likes = supabaseClient.postgrest["likes"]
-                        .select { filter { isIn("post_id", postIds); eq("user_id", currentUserId) } }
-                        .decodeList<com.rafiq.domain.model.Like>()
-                
-                    val likedPostIds = likes.map { it.postId }.toSet()
-                    posts.forEach { 
-                        if (it.id in likedPostIds) {
-                            it.likedBy = mapOf(currentUserId to true)
+                val (likeCounts, likedByPost) = loadLikeCounts(posts.map { it.id })
+                posts.map { post ->
+                    post.copy(
+                        likesCount = likeCounts[post.id] ?: post.likesCount,
+                        likedBy = if (currentUserId != null && currentUserId in (likedByPost[post.id] ?: emptySet())) {
+                            mapOf(currentUserId to true)
+                        } else {
+                            post.likedBy
                         }
-                    }
-                }
-                posts.sortedByDescending { it.timestamp }
+                    )
+                }.sortedByDescending { it.timestamp }
             } catch (e: Exception) {
                 e.printStackTrace()
                 emptyList<Post>()
@@ -93,15 +115,16 @@ class PostRepositoryImpl @Inject constructor(
                 .decodeSingle<Post>()
                 
             val currentUserId = supabaseClient.auth.currentUserOrNull()?.id
-            if (currentUserId != null) {
-                val likeCount = supabaseClient.postgrest["likes"]
-                    .select { filter { eq("post_id", postId); eq("user_id", currentUserId) } }
-                    .countOrNull() ?: 0
-                if (likeCount > 0) {
-                    post.likedBy = mapOf(currentUserId to true)
+            val (likeCounts, likedByPost) = loadLikeCounts(listOf(postId))
+            val annotatedPost = post.copy(
+                likesCount = likeCounts[post.id] ?: post.likesCount,
+                likedBy = if (currentUserId != null && currentUserId in (likedByPost[postId] ?: emptySet())) {
+                    mapOf(currentUserId to true)
+                } else {
+                    post.likedBy
                 }
-            }
-            Result.success(post)
+            )
+            Result.success(annotatedPost)
         } catch (e: Exception) {
             e.printStackTrace()
             Result.failure(e)
@@ -244,28 +267,24 @@ class PostRepositoryImpl @Inject constructor(
         return try {
             val generatedId = if (!comment.id.isNullOrBlank()) comment.id else java.util.UUID.randomUUID().toString()
             val timestamp = if (comment.timestamp > 0) comment.timestamp else System.currentTimeMillis()
-            
-            val commentJson = buildJsonObject {
-                put("id", generatedId)
-                put("post_id", comment.postId)
-                if (!comment.userId.isNullOrBlank()) {
-                    put("user_id", comment.userId)
-                }
-                put("text_content", comment.textContent)
-                put("timestamp", timestamp)
-                if (!comment.parentId.isNullOrBlank()) {
-                    put("parent_id", comment.parentId)
-                }
-            }
-            
-            android.util.Log.d("RAFIQ_DEBUG", "createComment: Inserting JSON: $commentJson")
-            
-            // Supabase 3.0.x insertion
-            supabaseClient.postgrest["comments"].insert(commentJson)
+
+            val dto = CommentInsertDto(
+                id = generatedId,
+                postId = comment.postId,
+                userId = comment.userId,
+                textContent = comment.textContent,
+                timestamp = timestamp,
+                parentId = comment.parentId
+            )
+
+            android.util.Log.d("RAFIQ_DEBUG", "createComment: Inserting DTO: $dto")
+
+            // Supabase PostgREST insertion
+            supabaseClient.postgrest["comments"].insert(dto)
             
             android.util.Log.d("RAFIQ_DEBUG", "createComment: INSERT CALL FINISHED (No Exception)")
             
-            // Recalculate actual visible count - Wrap in try/catch to prevent failure if schema mismatch exists
+            // Recalculate actual visible count
             try {
                 val postResult = getPostById(comment.postId)
                 val post = postResult.getOrNull()
@@ -274,7 +293,6 @@ class PostRepositoryImpl @Inject constructor(
                         .select(Columns.ALL) { filter { eq("post_id", post.id) } }
                         .decodeList<Comment>()
                     
-                    // Exclude orphans
                     val allIds = allComments.map { it.id }.toSet()
                     val validCount = allComments.count { it.parentId == null || it.parentId in allIds }
                     
@@ -287,10 +305,10 @@ class PostRepositoryImpl @Inject constructor(
                 android.util.Log.e("RAFIQ_DEBUG", "createComment: Secondary update error (ignored) - ${e.message}")
             }
             
-            android.util.Log.d("RAFIQ_DEBUG", "createComment: SUCCESS")
             Result.success(Unit)
         } catch (e: Exception) {
-            android.util.Log.e("RAFIQ_DEBUG", "createComment: FATAL ERROR - ${e.message}", e)
+            android.util.Log.e("RAFIQ_DEBUG", "createComment: ERROR - ${e.message}", e)
+            e.printStackTrace()
             Result.failure(e)
         }
     }
@@ -311,38 +329,38 @@ class PostRepositoryImpl @Inject constructor(
 
     override suspend fun deleteComment(commentId: String): Result<Unit> {
         return try {
-            // We might want to decrement comments count on the post, but for simplicity
-            // or if we have a cascade, we just delete the comment first.
-            // Getting the post ID from the comment to decrement count.
+            // Fetch the comment being deleted (need post_id for count update)
             val comment = supabaseClient.postgrest["comments"]
                 .select(Columns.ALL) { filter { eq("id", commentId) } }
-                .decodeSingleOrNull<Comment>()
-            
-            comment?.let {
-                val allPostComments = supabaseClient.postgrest["comments"]
-                    .select(Columns.ALL) { filter { eq("post_id", it.postId) } }
-                    .decodeList<Comment>()
-                
-                val idsToDelete = mutableSetOf(commentId)
-                
-                // Find existing orphans
-                val allIds = allPostComments.map { it.id }.toSet()
-                allPostComments.forEach { c ->
-                    if (!c.parentId.isNullOrBlank() && c.parentId !in allIds) {
-                        idsToDelete.add(c.id)
-                    }
-                }
-                
-                supabaseClient.postgrest["comments"].delete {
-                    filter { isIn("id", idsToDelete.toList()) }
-                }
-                
-                // Update post count
-                val remainingCount = allPostComments.size - idsToDelete.size
-                supabaseClient.postgrest["posts"].update(
-                    { set("comments_count", if (remainingCount > 0) remainingCount else 0) }
-                ) { filter { eq("id", it.postId) } }
+                .decodeSingleOrNull<Comment>() ?: return Result.success(Unit)
+
+            // Fetch ALL comments on this post so we can do recursive tree traversal
+            val allPostComments = supabaseClient.postgrest["comments"]
+                .select(Columns.ALL) { filter { eq("post_id", comment.postId) } }
+                .decodeList<Comment>()
+
+            // Build a parent → children map for fast lookup
+            val childrenMap = allPostComments.groupBy { it.parentId }
+
+            // Recursively collect the target comment + every descendant at all depths
+            val idsToDelete = mutableSetOf<String>()
+            fun collectTree(id: String) {
+                idsToDelete.add(id)
+                childrenMap[id]?.forEach { child -> collectTree(child.id) }
             }
+            collectTree(commentId)
+
+            // Delete all in one call (DB ON DELETE CASCADE also handles this as safety net)
+            supabaseClient.postgrest["comments"].delete {
+                filter { isIn("id", idsToDelete.toList()) }
+            }
+
+            // Decrement comments_count by the exact number of removed rows
+            val newCount = (allPostComments.size - idsToDelete.size).coerceAtLeast(0)
+            supabaseClient.postgrest["posts"].update(
+                { set("comments_count", newCount) }
+            ) { filter { eq("id", comment.postId) } }
+
             Result.success(Unit)
         } catch (e: Exception) {
             e.printStackTrace()
