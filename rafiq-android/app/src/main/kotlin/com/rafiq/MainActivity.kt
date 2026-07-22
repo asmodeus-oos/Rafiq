@@ -1,6 +1,7 @@
 package com.rafiq
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
@@ -38,7 +39,7 @@ import com.rafiq.domain.model.User
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.auth.auth
-
+import com.rafiq.domain.manager.DeepLinkManager
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -53,13 +54,12 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         
-        // Handle Supabase Auth deep links (like email verification)
+        // Handle Supabase Auth deep links
         supabaseClient.handleDeeplinks(intent)
         
         lifecycleScope.launch {
             supabaseClient.auth.sessionStatus.collectLatest { status ->
                 if (status is SessionStatus.Authenticated) {
-                    // Start Background Push Notification Service
                     val serviceIntent = android.content.Intent(this@MainActivity, com.rafiq.service.NotificationService::class.java)
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                         startForegroundService(serviceIntent)
@@ -67,7 +67,6 @@ class MainActivity : ComponentActivity() {
                         startService(serviceIntent)
                     }
 
-                    // Real-Time Online Presence Sync & Profile Restorer
                     lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                         try {
                             val userId = status.session.user?.id
@@ -107,7 +106,6 @@ class MainActivity : ComponentActivity() {
                                     
                                     supabaseClient.postgrest["users"].insert(userToInsert)
                                     
-                                    // Notify user on Main thread that email is confirmed
                                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                         android.widget.Toast.makeText(this@MainActivity, "Email confirmed successfully! Welcome to RAFIQ", android.widget.Toast.LENGTH_LONG).show()
                                     }
@@ -118,34 +116,30 @@ class MainActivity : ComponentActivity() {
                                         }
                                 }
                             }
-	                        } catch (e: Exception) {
-	                            e.printStackTrace()
-	                        }
-	                    }
-	                }
-	            }
-	        }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+            }
+        }
 
         setContent {
             RafiqTheme {
-                var showApp by remember {
-                    mutableStateOf(supabaseClient.auth.currentSessionOrNull() != null)
-                }
+                val isAuthenticated = supabaseClient.auth.currentSessionOrNull() != null
+                var showApp by remember { mutableStateOf(isAuthenticated) }
                 var sessionChecked by remember { mutableStateOf(false) }
 
-                val targetPostId = intent.getStringExtra("POST_ID")
-                val targetUserId = intent.getStringExtra("USER_ID")
-                val isChat = intent.getBooleanExtra("IS_CHAT", false)
-                
-                val startRoute = if (targetPostId != null) {
-                    com.rafiq.presentation.navigation.Route.PostDetails.createRoute(targetPostId)
-                } else if (targetUserId != null) {
-                    if (isChat) {
-                        Route.ChatDetail.createRoute(targetUserId)
-                    } else {
-                        Route.Profile.createRoute(targetUserId)
+                // Parse initial deep link / app link
+                val parsedTarget = remember(intent) { DeepLinkManager.parseIntent(intent) }
+                val initialRoute = remember(parsedTarget) { parsedTarget?.toRouteString() }
+
+                // If user is unauthenticated, save deep link to restore after login
+                LaunchedEffect(initialRoute, isAuthenticated) {
+                    if (initialRoute != null && !isAuthenticated) {
+                        DeepLinkManager.savePendingDeepLink(this@MainActivity, initialRoute)
                     }
-                } else null
+                }
 
                 val permissionsToRequest = remember {
                     val list = mutableListOf(
@@ -169,7 +163,7 @@ class MainActivity : ComponentActivity() {
 
                 LaunchedEffect(Unit) {
                     sessionChecked = true
-                    if (supabaseClient.auth.currentSessionOrNull() != null) {
+                    if (isAuthenticated) {
                         showApp = true
                     }
                     if (!permissionsState.allPermissionsGranted) {
@@ -210,7 +204,7 @@ class MainActivity : ComponentActivity() {
                     } else {
                         RafiqNavGraph(
                             supabaseClient = supabaseClient,
-                            deepLinkRoute = startRoute
+                            deepLinkRoute = initialRoute
                         )
                     }
                 }
@@ -221,13 +215,22 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        // Handle deep links when app is already in foreground/background
         supabaseClient.handleDeeplinks(intent)
+
+        val target = DeepLinkManager.parseIntent(intent)
+        val route = target?.toRouteString()
+        if (route != null) {
+            if (supabaseClient.auth.currentSessionOrNull() != null) {
+                // Application in foreground — refresh content or navigate
+                Log.d("MainActivity", "onNewIntent deep link route: $route")
+            } else {
+                DeepLinkManager.savePendingDeepLink(this, route)
+            }
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        // Set presence to OFFLINE when app is killed
         lifecycleScope.launch {
             try {
                 val userId = supabaseClient.auth.currentUserOrNull()?.id

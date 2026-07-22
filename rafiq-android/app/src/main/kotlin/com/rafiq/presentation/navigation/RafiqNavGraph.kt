@@ -1,67 +1,67 @@
 package com.rafiq.presentation.navigation
 
 import androidx.compose.runtime.Composable
-import androidx.navigation.NavHostController
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import com.rafiq.presentation.auth.AuthScreen
-import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.auth.auth
-import com.rafiq.presentation.screen.home.HomeScreen
-import com.rafiq.presentation.screen.discovery.DiscoveryScreen
-import com.rafiq.presentation.screen.call.RandomCallMatchingScreen
-import com.rafiq.presentation.screen.notification.NotificationScreen
-
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
+import com.rafiq.domain.manager.DeepLinkManager
+import com.rafiq.presentation.auth.AuthScreen
+import com.rafiq.presentation.screen.call.ActiveCallScreen
+import com.rafiq.presentation.screen.call.RandomCallMatchingScreen
+import com.rafiq.presentation.screen.chat.ChatDetailScreen
+import com.rafiq.presentation.screen.chat.ChatListScreen
+import com.rafiq.presentation.screen.chat.ChatViewModel
+import com.rafiq.presentation.screen.discovery.DiscoveryScreen
+import com.rafiq.presentation.screen.home.HomeScreen
+import com.rafiq.presentation.screen.notification.NotificationScreen
+import com.rafiq.presentation.screen.post.PostDetailsScreen
+import com.rafiq.presentation.screen.profile.ModernProfileScreen
+import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.auth.auth
 import kotlinx.coroutines.launch
-
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.unit.dp
-import com.rafiq.domain.model.User
-import io.github.jan.supabase.postgrest.postgrest
-import io.github.jan.supabase.postgrest.query.Columns
 
 @Composable
 fun RafiqNavGraph(
-    navController: NavHostController = rememberNavController(),
     supabaseClient: SupabaseClient,
+    navController: NavHostController = rememberNavController(),
     deepLinkRoute: String? = null
 ) {
     val coroutineScope = rememberCoroutineScope()
-    val startDestination = deepLinkRoute ?: if (supabaseClient.auth.currentSessionOrNull() != null) {
-        Route.Home.route
+    val context = LocalContext.current
+    val startDestination = if (supabaseClient.auth.currentSessionOrNull() != null) {
+        deepLinkRoute ?: Route.Home.route
     } else {
         Route.Auth.route
     }
-    
-    Box(modifier = Modifier.fillMaxSize()) {
-        NavHost(
-            navController = navController,
-            startDestination = startDestination,
-            enterTransition = { slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400)) },
-            exitTransition = { slideOutHorizontally(targetOffsetX = { -it / 3 }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400)) },
-            popEnterTransition = { slideInHorizontally(initialOffsetX = { -it / 3 }, animationSpec = tween(400)) + fadeIn(animationSpec = tween(400)) },
-            popExitTransition = { slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(400)) + fadeOut(animationSpec = tween(400)) }
-        ) {
+
+    LaunchedEffect(deepLinkRoute) {
+        if (deepLinkRoute != null && supabaseClient.auth.currentSessionOrNull() != null) {
+            navController.navigate(deepLinkRoute) {
+                popUpTo(Route.Home.route) { inclusive = false }
+            }
+        }
+    }
+
+    NavHost(
+        navController = navController,
+        startDestination = startDestination
+    ) {
         composable(Route.Auth.route) {
             AuthScreen(
                 onAuthSuccess = {
-                    navController.navigate(Route.Home.route) {
+                    val pendingRoute = DeepLinkManager.getAndClearPendingDeepLink(context)
+                    val target = pendingRoute ?: Route.Home.route
+                    navController.navigate(target) {
                         popUpTo(Route.Auth.route) { inclusive = true }
                     }
                 }
@@ -92,7 +92,7 @@ fun RafiqNavGraph(
                 },
                 onNavigateToNotifications = { navController.navigate(Route.Notifications.route) },
                 onNavigateToChat = { targetUserId -> navController.navigate(Route.ChatDetail.createRoute(targetUserId)) },
-                onNavigateToRoom = { roomId -> /* Navigate to active voice room */ }
+                onNavigateToRoom = { roomId -> navController.navigate(Route.ActiveCall.createRoute(roomId)) }
             )
         }
         composable(
@@ -105,10 +105,15 @@ fun RafiqNavGraph(
                 }
             ),
             deepLinks = listOf(
-                androidx.navigation.navDeepLink { uriPattern = "https://rafiq-roan.vercel.app/profile/{userId}" }
+                navDeepLink { uriPattern = "https://rafiq-roan.vercel.app/profile/{userId}" },
+                navDeepLink { uriPattern = "https://rafiq-roan.vercel.app/u/{userId}" },
+                navDeepLink { uriPattern = "https://rafiq.app/profile/{userId}" },
+                navDeepLink { uriPattern = "https://rafiq.app/u/{userId}" },
+                navDeepLink { uriPattern = "rafiq://profile/{userId}" },
+                navDeepLink { uriPattern = "rafiq://u/{userId}" }
             )
         ) {
-            com.rafiq.presentation.screen.profile.ModernProfileScreen(
+            ModernProfileScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToEditProfile = { navController.navigate(Route.EditProfile.route) },
                 onNavigateToPostDetails = { postId -> navController.navigate(Route.PostDetails.createRoute(postId)) },
@@ -122,17 +127,31 @@ fun RafiqNavGraph(
         composable(
             route = Route.PostDetails.route,
             arguments = listOf(
-                navArgument("postId") {
+                navArgument("postId") { type = NavType.StringType },
+                navArgument("commentId") {
                     type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
                 }
             ),
             deepLinks = listOf(
-                androidx.navigation.navDeepLink { uriPattern = "https://rafiq-roan.vercel.app/post/{postId}" }
+                navDeepLink { uriPattern = "https://rafiq-roan.vercel.app/post/{postId}" },
+                navDeepLink { uriPattern = "https://rafiq-roan.vercel.app/post/{postId}?commentId={commentId}" },
+                navDeepLink { uriPattern = "https://rafiq-roan.vercel.app/post/{postId}/comment/{commentId}" },
+                navDeepLink { uriPattern = "https://rafiq-roan.vercel.app/comment/{commentId}" },
+                navDeepLink { uriPattern = "https://rafiq.app/post/{postId}" },
+                navDeepLink { uriPattern = "https://rafiq.app/post/{postId}/comment/{commentId}" },
+                navDeepLink { uriPattern = "https://rafiq.app/comment/{commentId}" },
+                navDeepLink { uriPattern = "rafiq://post/{postId}" },
+                navDeepLink { uriPattern = "rafiq://post/{postId}/comment/{commentId}" },
+                navDeepLink { uriPattern = "rafiq://comment/{commentId}" }
             )
         ) { backStackEntry ->
             val postId = backStackEntry.arguments?.getString("postId") ?: ""
-            com.rafiq.presentation.screen.post.PostDetailsScreen(
+            val commentId = backStackEntry.arguments?.getString("commentId")
+            PostDetailsScreen(
                 postId = postId,
+                highlightCommentId = commentId,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToProfile = { userId -> navController.navigate(Route.Profile.createRoute(userId)) }
             )
@@ -164,76 +183,54 @@ fun RafiqNavGraph(
             )
         }
         composable(Route.ChatList.route) {
-            val chatListViewModel: com.rafiq.presentation.screen.chat.ChatListViewModel = androidx.hilt.navigation.compose.hiltViewModel()
-            val chats by chatListViewModel.chats.collectAsState()
-            val isLoading by chatListViewModel.isLoading.collectAsState()
-            com.rafiq.presentation.screen.chat.ChatListScreen(
-                chats = chats,
-                isLoading = isLoading,
-                onRefresh = { chatListViewModel.refresh() },
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToChat = { targetUserId -> navController.navigate(Route.ChatDetail.createRoute(targetUserId)) }
+            ChatListScreen(
+                onNavigateToChat = { targetUserId ->
+                    navController.navigate(Route.ChatDetail.createRoute(targetUserId))
+                },
+                onNavigateBack = { navController.popBackStack() }
             )
         }
         composable(
             route = Route.ChatDetail.route,
             arguments = listOf(
-                navArgument("userId") {
-                    type = NavType.StringType
-                }
+                navArgument("userId") { type = NavType.StringType }
+            ),
+            deepLinks = listOf(
+                navDeepLink { uriPattern = "https://rafiq-roan.vercel.app/chat/{userId}" },
+                navDeepLink { uriPattern = "https://rafiq.app/chat/{userId}" },
+                navDeepLink { uriPattern = "rafiq://chat/{userId}" }
             )
         ) { backStackEntry ->
-            val otherUserId = backStackEntry.arguments?.getString("userId") ?: ""
-            val chatViewModel: com.rafiq.presentation.screen.chat.ChatViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+            val targetUserId = backStackEntry.arguments?.getString("userId") ?: ""
+            val viewModel: ChatViewModel = hiltViewModel()
 
-            // Effect to load messages
-            androidx.compose.runtime.LaunchedEffect(otherUserId) {
-                chatViewModel.getMessages(otherUserId)
+            LaunchedEffect(targetUserId) {
+                viewModel.getMessages(targetUserId)
             }
 
-            val messages by chatViewModel.messages.collectAsState()
-            val isTyping by chatViewModel.isTyping.collectAsState()
-            val targetUser by chatViewModel.targetUser.collectAsState()
-            val currentUser by chatViewModel.currentUser.collectAsState()
+            val messages by viewModel.messages.collectAsState()
+            val targetUser by viewModel.targetUser.collectAsState()
+            val currentUser by viewModel.currentUser.collectAsState()
 
-            // Build a deterministic room ID from sorted user IDs
-            val myId = chatViewModel.currentUserId ?: ""
-            val chatRoomId = if (myId.isNotEmpty() && otherUserId.isNotEmpty()) {
-                listOf(myId, otherUserId).sorted().joinToString("_")
-            } else "default_room"
-
-            com.rafiq.presentation.screen.chat.ChatDetailScreen(
-                currentUserId = chatViewModel.currentUserId,
+            ChatDetailScreen(
+                currentUserId = viewModel.currentUserId,
                 targetUser = targetUser,
                 currentUserAvatar = currentUser?.avatar,
                 messages = messages,
-                isTyping = isTyping,
                 onSendMessage = { text, mediaUrl, isVoice, replyToId ->
-                    chatViewModel.sendMessage(
-                        receiverId = otherUserId,
-                        textContent = text,
-                        mediaUrl = mediaUrl,
-                        isVoice = isVoice,
-                        replyToId = replyToId
-                    )
+                    viewModel.sendMessage(targetUserId, text, mediaUrl, isVoice, replyToId)
                 },
-                onDeleteMessage = { chatViewModel.deleteMessageForEveryone(it) },
-                onTyping = { chatViewModel.sendTypingEvent() },
-                onBack = { navController.popBackStack() },
                 onNavigateToProfile = { userId ->
-                    if (userId.isNotBlank()) {
-                        navController.navigate(Route.Profile.createRoute(userId))
-                    }
+                    navController.navigate(Route.Profile.createRoute(userId))
                 },
-                onCallClick = { navController.navigate(Route.ActiveCall.createRoute(chatRoomId, isVideo = false)) },
-                onVideoCallClick = { navController.navigate(Route.ActiveCall.createRoute(chatRoomId, isVideo = true)) }
+                onBack = { navController.popBackStack() }
             )
         }
         composable(Route.RandomCallMatching.route) {
             RandomCallMatchingScreen(
                 onCancel = { navController.popBackStack() },
                 onCallConnected = { roomId ->
-                    navController.navigate(Route.ActiveCall.createRoute(roomId, isVideo = false)) {
+                    navController.navigate(Route.ActiveCall.createRoute(roomId)) {
                         popUpTo(Route.RandomCallMatching.route) { inclusive = true }
                     }
                 }
@@ -242,26 +239,27 @@ fun RafiqNavGraph(
         composable(
             route = Route.ActiveCall.route,
             arguments = listOf(
-                navArgument("roomId") {
-                    type = NavType.StringType
-                    defaultValue = "default_room"
-                },
+                navArgument("roomId") { type = NavType.StringType },
                 navArgument("isVideo") {
                     type = NavType.BoolType
                     defaultValue = false
                 }
+            ),
+            deepLinks = listOf(
+                navDeepLink { uriPattern = "https://rafiq-roan.vercel.app/call/{roomId}" },
+                navDeepLink { uriPattern = "https://rafiq-roan.vercel.app/voice/{roomId}" },
+                navDeepLink { uriPattern = "https://rafiq-roan.vercel.app/privatevoice/{roomId}" },
+                navDeepLink { uriPattern = "https://rafiq.app/call/{roomId}" },
+                navDeepLink { uriPattern = "https://rafiq.app/voice/{roomId}" },
+                navDeepLink { uriPattern = "https://rafiq.app/privatevoice/{roomId}" },
+                navDeepLink { uriPattern = "rafiq://call/{roomId}" },
+                navDeepLink { uriPattern = "rafiq://voice/{roomId}" },
+                navDeepLink { uriPattern = "rafiq://privatevoice/{roomId}" }
             )
         ) {
-            com.rafiq.presentation.screen.call.ActiveCallScreen(
+            ActiveCallScreen(
                 onCallEnded = { navController.popBackStack() }
             )
         }
     }
-
-    com.rafiq.presentation.components.call.GlobalFloatingCallOverlay(
-        onReopenCall = { roomId, isVideo ->
-            navController.navigate(Route.ActiveCall.createRoute(roomId, isVideo))
-        }
-    )
-}
 }

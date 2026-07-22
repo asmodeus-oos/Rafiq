@@ -11,9 +11,7 @@ sealed class Route(val route: String) {
     object Discovery : Route("discovery")
     object ChatList : Route("chat_list")
     object ChatDetail : Route("chat_detail/{userId}") {
-        fun createRoute(userId: String): String {
-            return "chat_detail/$userId"
-        }
+        fun createRoute(userId: String): String = "chat_detail/$userId"
     }
     object EditProfile : Route("edit_profile")
     object Notifications : Route("notifications")
@@ -23,10 +21,10 @@ sealed class Route(val route: String) {
         }
     }
     
-    object PostDetails : Route("post_details/{postId}") {
-        fun createRoute(postId: String): String {
-            return "post_details/$postId"
-        }
+    object PostDetails : Route("post_details/{postId}?commentId={commentId}") {
+        fun createRoute(postId: String): String = "post_details/$postId"
+        fun createRouteWithComment(postId: String, commentId: String): String = "post_details/$postId?commentId=$commentId"
+        fun createRouteForComment(commentId: String): String = "post_details/unknown?commentId=$commentId"
     }
     
     // Call Flow

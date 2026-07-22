@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -147,16 +148,30 @@ class NotificationService : Service() {
                 "Someone"
             }
 
+            val deepLinkUri = when (dto.type) {
+                "follow" -> Uri.parse("rafiq://profile/${dto.senderId}")
+                "message", "voice_message" -> Uri.parse("rafiq://chat/${dto.senderId}")
+                "comment" -> {
+                    if (!dto.commentId.isNullOrBlank() && !dto.postId.isNullOrBlank()) {
+                        Uri.parse("rafiq://post/${dto.postId}/comment/${dto.commentId}")
+                    } else if (!dto.postId.isNullOrBlank()) {
+                        Uri.parse("rafiq://post/${dto.postId}")
+                    } else {
+                        Uri.parse("rafiq://profile/${dto.senderId}")
+                    }
+                }
+                else -> {
+                    if (!dto.postId.isNullOrBlank()) {
+                        Uri.parse("rafiq://post/${dto.postId}")
+                    } else {
+                        Uri.parse("rafiq://profile/${dto.senderId}")
+                    }
+                }
+            }
+
             val intent = Intent(this@NotificationService, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                when (dto.type) {
-                    "follow" -> putExtra("USER_ID", dto.senderId)
-                    "message", "voice_message" -> {
-                        putExtra("USER_ID", dto.senderId)
-                        putExtra("IS_CHAT", true)
-                    }
-                    else -> putExtra("POST_ID", dto.postId)
-                }
+                data = deepLinkUri
             }
 
             val pendingIntent = PendingIntent.getActivity(

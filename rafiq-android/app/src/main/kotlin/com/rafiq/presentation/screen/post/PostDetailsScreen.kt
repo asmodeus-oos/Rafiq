@@ -1,10 +1,14 @@
 package com.rafiq.presentation.screen.post
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -21,17 +25,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import com.rafiq.domain.manager.ShareManager
 import com.rafiq.domain.model.Comment
 import com.rafiq.domain.model.Post
 import com.rafiq.presentation.screen.profile.ModernPostCard
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.Image
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PostDetailsScreen(
     postId: String,
+    highlightCommentId: String? = null,
     onNavigateBack: () -> Unit,
     onNavigateToProfile: (String) -> Unit,
     viewModel: PostDetailsViewModel = hiltViewModel()
@@ -48,8 +51,21 @@ fun PostDetailsScreen(
     var showLikersForPost by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
+    val listState = rememberLazyListState()
+
     LaunchedEffect(postId) {
         viewModel.loadPostDetails(postId)
+    }
+
+    // Auto-scroll to target comment when deep link opens
+    LaunchedEffect(highlightCommentId, comments) {
+        if (!highlightCommentId.isNullOrBlank() && comments.isNotEmpty()) {
+            val targetIdx = comments.indexOfFirst { it.id == highlightCommentId }
+            if (targetIdx >= 0) {
+                // Account for post header item (+1)
+                listState.animateScrollToItem(targetIdx + 1)
+            }
+        }
     }
 
     Scaffold(
@@ -59,6 +75,17 @@ fun PostDetailsScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_chevron_left), contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = {
+                        val currentPost = post
+                        if (currentPost != null) {
+                            val author = postUser?.name ?: "User"
+                            ShareManager.sharePost(context, author, currentPost.textContent, currentPost.id)
+                        }
+                    }) {
+                        Icon(painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_share_2), contentDescription = "Share")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
@@ -98,54 +125,35 @@ fun PostDetailsScreen(
                     }
                     
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Surface(
+                        OutlinedTextField(
+                            value = commentText,
+                            onValueChange = { commentText = it },
+                            placeholder = { Text("Write a comment...") },
                             modifier = Modifier
                                 .weight(1f)
                                 .padding(end = 8.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color.White
-                        ) {
-                            TextField(
-                                value = commentText,
-                                onValueChange = { commentText = it },
-                                modifier = Modifier.fillMaxWidth(),
-                                placeholder = { Text("Write a comment...", color = Color.Gray) },
-                                colors = TextFieldDefaults.colors(
-                                    focusedContainerColor = Color.Transparent,
-                                    unfocusedContainerColor = Color.Transparent,
-                                    disabledContainerColor = Color.Transparent,
-                                    focusedIndicatorColor = Color.Transparent,
-                                    unfocusedIndicatorColor = Color.Transparent,
-                                    cursorColor = MaterialTheme.colorScheme.primary
-                                ),
-                                maxLines = 4
-                            )
-                        }
+                            shape = RoundedCornerShape(24.dp),
+                            maxLines = 4
+                        )
                         
-                        Surface(
+                        IconButton(
                             onClick = {
                                 if (commentText.isNotBlank()) {
-                                    viewModel.submitComment(postId, commentText.trim(), replyingTo?.id)
+                                    viewModel.submitComment(postId, commentText, replyingTo?.id)
                                     commentText = ""
                                     replyingTo = null
-                                    android.widget.Toast.makeText(context, "Reply sent", android.widget.Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color.Black,
-                            modifier = Modifier.size(52.dp)
+                            enabled = commentText.isNotBlank()
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_send),
-                                    contentDescription = "Send",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
+                            Icon(
+                                painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_send),
+                                contentDescription = "Send",
+                                tint = if (commentText.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                            )
                         }
                     }
                 }
@@ -158,6 +166,7 @@ fun PostDetailsScreen(
             }
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues),
@@ -172,7 +181,7 @@ fun PostDetailsScreen(
                             currentUserId = viewModel.currentUserId,
                             onLikeClick = { viewModel.toggleLike(postId) },
                             onLikeLongClick = { showLikersForPost = postId },
-                            onCommentClick = { /* Scroll to comments maybe? */ },
+                            onCommentClick = { },
                             onEditClick = { postToEdit = it },
                             onDeleteClick = { viewModel.deletePost(it.id) { onNavigateBack() } }
                         )
@@ -183,9 +192,11 @@ fun PostDetailsScreen(
                 // Comments List
                 items(comments.size) { index ->
                     val comment = comments[index]
+                    val isHighlighted = comment.id == highlightCommentId
                     CommentItem(
                         comment = comment,
                         currentUserId = viewModel.currentUserId,
+                        isHighlighted = isHighlighted,
                         onReplyClick = { replyingTo = it },
                         onProfileClick = onNavigateToProfile,
                         onEditClick = { commentToEdit = it },
@@ -271,12 +282,21 @@ fun PostDetailsScreen(
 fun CommentItem(
     comment: Comment,
     currentUserId: String?,
+    isHighlighted: Boolean = false,
+    highlightCommentId: String? = null,
     onReplyClick: (Comment) -> Unit,
     onProfileClick: (String) -> Unit,
     onEditClick: (Comment) -> Unit,
     onDeleteClick: (Comment) -> Unit
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    val borderColor by animateColorAsState(
+        targetValue = if (isHighlighted) MaterialTheme.colorScheme.primary else Color.Transparent,
+        animationSpec = tween(600),
+        label = "commentHighlight"
+    )
 
     Column(
         modifier = Modifier
@@ -288,9 +308,13 @@ fun CommentItem(
             )
     ) {
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(width = if (isHighlighted) 2.dp else 0.dp, color = borderColor, shape = RoundedCornerShape(20.dp)),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isHighlighted) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else Color.White
+            ),
             elevation = CardDefaults.cardElevation(0.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -349,6 +373,33 @@ fun CommentItem(
                             tonalElevation = 0.dp,
                             shadowElevation = 8.dp
                         ) {
+                            DropdownMenuItem(
+                                text = { Text("Share Comment", style = MaterialTheme.typography.titleSmall) },
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp).clip(RoundedCornerShape(12.dp)),
+                                onClick = {
+                                    showMenu = false
+                                    ShareManager.shareComment(
+                                        context = context,
+                                        postId = comment.postId,
+                                        commentId = comment.id,
+                                        authorName = comment.user?.name ?: "User",
+                                        commentText = comment.textContent
+                                    )
+                                },
+                                leadingIcon = { Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_share_2), contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Copy Link", style = MaterialTheme.typography.titleSmall) },
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp).clip(RoundedCornerShape(12.dp)),
+                                onClick = {
+                                    showMenu = false
+                                    val url = ShareManager.getCommentUrl(comment.postId, comment.id)
+                                    ShareManager.copyToClipboard(context, url, "Comment Link")
+                                },
+                                leadingIcon = { Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_copy), contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+                            )
                             if (comment.userId == currentUserId) {
                                 DropdownMenuItem(
                                     text = { Text("Edit", style = MaterialTheme.typography.titleSmall) },
@@ -369,11 +420,6 @@ fun CommentItem(
                                     },
                                     leadingIcon = { Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_trash_2), contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp)) },
                                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
-                                )
-                            } else {
-                                DropdownMenuItem(
-                                    text = { Text("Report", style = MaterialTheme.typography.titleSmall) },
-                                    onClick = { showMenu = false }
                                 )
                             }
                         }
@@ -411,6 +457,7 @@ fun CommentItem(
                     CommentItem(
                         comment = reply,
                         currentUserId = currentUserId,
+                        isHighlighted = (reply.id == highlightCommentId),
                         onReplyClick = onReplyClick,
                         onProfileClick = onProfileClick,
                         onEditClick = onEditClick,

@@ -34,7 +34,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Rafiq.Splash">
         
-        <!-- Satisfies Rive Android library's tools:node="remove" rule to suppress the warning -->
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"
@@ -59,6 +58,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask">
+            
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -72,12 +72,23 @@
                 <data android:scheme="rafiq" android:host="login" />
             </intent-filter>
             
-            <!-- Deep Links for Shared Content -->
+            <!-- Custom Scheme Deep Links: rafiq://profile, rafiq://post, rafiq://comment, etc. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="rafiq" />
+            </intent-filter>
+
+            <!-- Universal App Links: https://rafiq-roan.vercel.app and https://rafiq.app -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="rafiq-roan.vercel.app" />
+                <data android:scheme="https" android:host="rafiq.app" />
+                <data android:scheme="http" android:host="rafiq-roan.vercel.app" />
+                <data android:scheme="http" android:host="rafiq.app" />
             </intent-filter>
         </activity>
     </application>
