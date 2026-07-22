@@ -45,6 +45,7 @@ fun PostDetailsScreen(
     var replyingTo by remember { mutableStateOf<Comment?>(null) }
     var postToEdit by remember { mutableStateOf<Post?>(null) }
     var commentToEdit by remember { mutableStateOf<Comment?>(null) }
+    var showLikersForPost by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
 
     LaunchedEffect(postId) {
@@ -170,6 +171,7 @@ fun PostDetailsScreen(
                             post = post!!,
                             currentUserId = viewModel.currentUserId,
                             onLikeClick = { viewModel.toggleLike(postId) },
+                            onLikeLongClick = { showLikersForPost = postId },
                             onCommentClick = { /* Scroll to comments maybe? */ },
                             onEditClick = { postToEdit = it },
                             onDeleteClick = { viewModel.deletePost(it.id) { onNavigateBack() } }
@@ -222,6 +224,18 @@ fun PostDetailsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { commentToEdit = null }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showLikersForPost != null) {
+        com.rafiq.presentation.components.post.LikersBottomSheet(
+            postId = showLikersForPost!!,
+            fetchLikers = { viewModel.fetchLikers(it) },
+            onDismiss = { showLikersForPost = null },
+            onUserClick = {
+                showLikersForPost = null
+                onNavigateToProfile(it)
             }
         )
     }
@@ -290,7 +304,7 @@ fun CommentItem(
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
-                                .clickable { onProfileClick(comment.userId) }
+                                .clickable { onProfileClick(comment.userId ?: "") }
                         )
                     } else {
                         Image(
@@ -300,7 +314,7 @@ fun CommentItem(
                                 .size(36.dp)
                                 .clip(CircleShape)
                                 .background(Color(0xFFF3F4F6))
-                                .clickable { onProfileClick(comment.userId) },
+                                .clickable { onProfileClick(comment.userId ?: "") },
                             contentScale = ContentScale.Inside
                         )
                     }
@@ -310,7 +324,7 @@ fun CommentItem(
                             text = comment.user?.name ?: "Unknown",
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
-                            modifier = Modifier.clickable { onProfileClick(comment.userId) }
+                            modifier = Modifier.clickable { onProfileClick(comment.userId ?: "") }
                         )
                         val timeStr = android.text.format.DateUtils.getRelativeTimeSpanString(comment.timestamp).toString()
                         Text(timeStr, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)

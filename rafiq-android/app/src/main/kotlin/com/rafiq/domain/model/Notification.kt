@@ -13,7 +13,7 @@ data class Notification(
     @SerialName("post_id") val postId: String? = null,
     @SerialName("comment_id") val commentId: String? = null,
     val read: Boolean = false,
-    @SerialName("created_at") val createdAt: Long = System.currentTimeMillis(),
+    val timestamp: Long = System.currentTimeMillis(),
     
     @Transient val sender: User? = null
 )

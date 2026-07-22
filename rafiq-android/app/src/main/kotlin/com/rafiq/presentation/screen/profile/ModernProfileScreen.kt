@@ -53,6 +53,8 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.combinedClickable
+import com.rafiq.presentation.components.post.LikersBottomSheet
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalPermissionsApi::class, ExperimentalMaterialApi::class)
@@ -61,6 +63,7 @@ fun ModernProfileScreen(
     onNavigateBack: () -> Unit,
     onNavigateToEditProfile: () -> Unit,
     onNavigateToPostDetails: (String) -> Unit = {},
+    onNavigateToChat: (String) -> Unit = {},
     viewModel: ModernProfileViewModel = hiltViewModel()
 ) {
     val user by viewModel.user.collectAsState()
@@ -74,6 +77,7 @@ fun ModernProfileScreen(
     val followingList by viewModel.following.collectAsState()
     val androidContext = LocalContext.current
     var postToEdit by remember { mutableStateOf<Post?>(null) }
+    var showLikersForPost by remember { mutableStateOf<String?>(null) }
 
     val permissionState = rememberMultiplePermissionsState(
         permissions = listOf(
@@ -97,8 +101,96 @@ fun ModernProfileScreen(
 
     var selectedTab by remember(postsTab) { mutableStateOf(postsTab) }
     var showCreatePostModal by remember { mutableStateOf(false) }
+    var showAvatarPreview by remember { mutableStateOf(false) }
     var isPosting by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
+
+    if (showAvatarPreview && user != null) {
+        val u = user!!
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showAvatarPreview = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.95f))
+            ) {
+                // Close Button
+                IconButton(
+                    onClick = { showAvatarPreview = false },
+                    modifier = Modifier
+                        .statusBarsPadding()
+                        .padding(16.dp)
+                        .align(Alignment.TopStart)
+                ) {
+                    Icon(
+                        painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_x),
+                        contentDescription = "Close",
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+
+                // Avatar Image
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.7f)
+                        .align(Alignment.Center)
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (u.avatar.isNotBlank()) {
+                        AsyncImage(
+                            model = u.avatar,
+                            contentDescription = "Full Avatar",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(24.dp)),
+                            contentScale = ContentScale.Fit
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_user),
+                            contentDescription = "Default Avatar",
+                            tint = Color.LightGray,
+                            modifier = Modifier.size(120.dp)
+                        )
+                    }
+                }
+
+                // Bottom user info bar
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(u.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                    if (u.username.isNotBlank()) {
+                        Text("@${u.username}", color = Color.Gray, fontSize = 14.sp)
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    if (isOwner) {
+                        Button(
+                            onClick = {
+                                showAvatarPreview = false
+                                onNavigateToEditProfile()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            shape = RoundedCornerShape(20.dp)
+                        ) {
+                            Icon(painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_camera), contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Change Profile Picture")
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     if (showCreatePostModal) {
         CreatePostModal(
@@ -254,16 +346,11 @@ fun ModernProfileScreen(
         },
         floatingActionButton = {
             if (selectedTab == stringResource(com.rafiq.R.string.posts) && !isLoading && user != null && isOwner) {
-                Surface(
-                    onClick = { showCreatePostModal = true },
-                    shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                    modifier = Modifier.size(64.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_feather), contentDescription = stringResource(com.rafiq.R.string.new_post), tint = MaterialTheme.colorScheme.primary)
-                    }
-                }
+                com.rafiq.presentation.components.common.DualToneFAB(
+                    iconRes = com.composables.icons.lucide.R.drawable.lucide_ic_feather,
+                    contentDescription = stringResource(com.rafiq.R.string.new_post),
+                    onClick = { showCreatePostModal = true }
+                )
             }
         }
     ) { paddingValues ->
@@ -351,6 +438,7 @@ fun ModernProfileScreen(
                                                 .background(Color.White, CircleShape)
                                                 .padding(4.dp)
                                                 .clip(CircleShape)
+                                                .clickable { showAvatarPreview = true }
                                         ) {
                                             if (u.avatar.isNotBlank()) {
                                                 AsyncImage(
@@ -369,17 +457,20 @@ fun ModernProfileScreen(
                                             }
                                         }
                                         // Online indicator dot like WhatsApp
-                                        if (u.onlineStatus == com.rafiq.domain.model.OnlineStatus.ONLINE) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .align(Alignment.BottomEnd)
-                                                    .offset(x = (-4).dp, y = (-4).dp)
-                                                    .size(16.dp)
-                                                    .background(Color.White, CircleShape)
-                                                    .padding(2.dp)
-                                                    .background(Color(0xFF22C55E), CircleShape)
-                                            )
+                                        val statusColor = when (u.onlineStatus) {
+                                            com.rafiq.domain.model.OnlineStatus.ONLINE -> Color(0xFF22C55E)
+                                            com.rafiq.domain.model.OnlineStatus.IN_CALL -> Color(0xFFFF9800)
+                                            else -> Color.Gray
                                         }
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomEnd)
+                                                .offset(x = (-4).dp, y = (-4).dp)
+                                                .size(16.dp)
+                                                .background(Color.White, CircleShape)
+                                                .padding(2.dp)
+                                                .background(statusColor, CircleShape)
+                                        )
                                         }
                                     }
                                 
@@ -503,34 +594,39 @@ fun ModernProfileScreen(
                                     
                                     // Action Button
                                     if (isOwner) {
-                                        Surface(
+                                        com.rafiq.presentation.components.common.DualToneButton(
+                                            text = "Edit Profile",
                                             onClick = { onNavigateToEditProfile() },
-                                            color = Color(0xFF111111),
-                                            shape = RoundedCornerShape(16.dp),
-                                            modifier = Modifier.fillMaxWidth().height(48.dp)
-                                        ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                Text("Edit Profile", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                            }
-                                        }
+                                            modifier = Modifier.fillMaxWidth(),
+                                            height = 48.dp
+                                        )
                                     } else {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                                         ) {
-                                            Surface(
-                                                onClick = { viewModel.toggleFollow() },
-                                                color = if (isFollowing) Color.Transparent else Color(0xFF111111),
-                                                border = if (isFollowing) androidx.compose.foundation.BorderStroke(1.dp, Color.Gray) else null,
-                                                shape = RoundedCornerShape(16.dp),
-                                                modifier = Modifier.weight(1f).height(48.dp)
-                                            ) {
-                                                Box(contentAlignment = Alignment.Center) {
-                                                    Text(if (isFollowing) "Following" else "Follow", color = if (isFollowing) Color.Black else Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                            if (isFollowing == false) {
+                                                com.rafiq.presentation.components.common.DualToneButton(
+                                                    text = "Follow",
+                                                    onClick = { viewModel.toggleFollow() },
+                                                    modifier = Modifier.weight(1f),
+                                                    height = 48.dp
+                                                )
+                                            } else {
+                                                Surface(
+                                                    onClick = { if (isFollowing != null) viewModel.toggleFollow() },
+                                                    color = Color.Transparent,
+                                                    border = androidx.compose.foundation.BorderStroke(1.5.dp, com.rafiq.presentation.theme.PrimaryAccent),
+                                                    shape = RoundedCornerShape(16.dp),
+                                                    modifier = Modifier.weight(1f).height(48.dp)
+                                                ) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        Text(if (isFollowing == true) "Following" else "...", color = com.rafiq.presentation.theme.PrimaryAccent, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                                    }
                                                 }
                                             }
                                             Surface(
-                                                onClick = { /* Handle get in touch */ },
+                                                onClick = { onNavigateToChat(u.id) },
                                                 color = Color(0xFFF8F9FA),
                                                 shape = RoundedCornerShape(16.dp),
                                                 modifier = Modifier.weight(1f).height(48.dp)
@@ -611,6 +707,7 @@ fun ModernProfileScreen(
                                                     post = post,
                                                     currentUserId = viewModel.currentUserId,
                                                     onLikeClick = { viewModel.toggleLike(post.id) },
+                                                    onLikeLongClick = { showLikersForPost = post.id },
                                                     onCommentClick = { onNavigateToPostDetails(post.id) },
                                                     onEditClick = { postToEdit = it },
                                                     onDeleteClick = { viewModel.deletePost(it.id) }
@@ -694,7 +791,7 @@ fun ModernProfileScreen(
                                                     }
                                                     Spacer(modifier = Modifier.width(12.dp))
                                                     Column(modifier = Modifier.weight(1f)) {
-                                                        Text(uItem.name ?: "Unknown", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onBackground)
+                                                        Text(uItem.name.ifBlank { "Unknown" }, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onBackground)
                                                         if (!uItem.bio.isNullOrBlank()) {
                                                             Text(uItem.bio, fontSize = 12.sp, color = Color.Gray, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                                         }
@@ -722,6 +819,18 @@ fun ModernProfileScreen(
                 )
             }
         }
+    }
+
+    if (showLikersForPost != null) {
+        LikersBottomSheet(
+            postId = showLikersForPost!!,
+            fetchLikers = { viewModel.fetchLikers(it) },
+            onDismiss = { showLikersForPost = null },
+            onUserClick = {
+                showLikersForPost = null
+                // Wait for navigation logic if applicable
+            }
+        )
     }
 }
 
@@ -769,6 +878,7 @@ fun ModernPostCard(
     post: Post,
     currentUserId: String?,
     onLikeClick: () -> Unit,
+    onLikeLongClick: () -> Unit = {},
     onCommentClick: () -> Unit = {},
     onEditClick: (Post) -> Unit = {},
     onDeleteClick: (Post) -> Unit = {}
@@ -880,11 +990,17 @@ fun ModernPostCard(
             // Interaction Buttons
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 // Like Button
-                Surface(
-                    onClick = onLikeClick,
-                    color = if (isLiked) Color(0xFFFF007F).copy(alpha = 0.1f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.05f),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.weight(1f).height(48.dp)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (isLiked) Color(0xFFFF007F).copy(alpha = 0.1f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.05f))
+                        .combinedClickable(
+                            onClick = onLikeClick,
+                            onLongClick = onLikeLongClick
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
                     Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                         Icon(painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_heart), contentDescription = "Like", tint = if (isLiked) Color(0xFFFF007F) else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
@@ -1216,23 +1332,32 @@ fun CreatePostModal(onDismiss: () -> Unit, isPosting: Boolean, onPostCreate: (St
 
 
 @Composable
-fun AudioPlayerComponent(audioUrl: String) {
+fun AudioPlayerComponent(
+    audioUrl: String,
+    containerColor: Color = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+    contentColor: Color = MaterialTheme.colorScheme.primary,
+    onSurfaceColor: Color = MaterialTheme.colorScheme.onSurfaceVariant
+) {
     var isPlaying by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var progress by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0f) }
     var duration by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
     var currentPosition by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(0) }
     var playbackSpeed by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(1.0f) }
     
-    val mediaPlayer = androidx.compose.runtime.remember { android.media.MediaPlayer() }
+    var mediaPlayer by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<android.media.MediaPlayer?>(null) }
     
     androidx.compose.runtime.DisposableEffect(audioUrl) {
+        val player = android.media.MediaPlayer()
+        mediaPlayer = player
+        
         try {
-            mediaPlayer.setDataSource(audioUrl)
-            mediaPlayer.prepareAsync()
-            mediaPlayer.setOnPreparedListener { mp ->
+            val finalUrl = if (audioUrl.startsWith("file://")) audioUrl.replace("file://", "") else audioUrl
+            player.setDataSource(finalUrl)
+            player.prepareAsync()
+            player.setOnPreparedListener { mp ->
                 duration = mp.duration
             }
-            mediaPlayer.setOnCompletionListener {
+            player.setOnCompletionListener {
                 isPlaying = false
                 currentPosition = 0
                 progress = 0f
@@ -1243,24 +1368,27 @@ fun AudioPlayerComponent(audioUrl: String) {
         }
         
         onDispose {
-            mediaPlayer.release()
+            player.release()
+            mediaPlayer = null
         }
     }
     
     androidx.compose.runtime.LaunchedEffect(isPlaying) {
         while (isPlaying) {
-            if (mediaPlayer.isPlaying) {
-                currentPosition = mediaPlayer.currentPosition
+            val player = mediaPlayer
+            if (player != null && player.isPlaying) {
+                currentPosition = player.currentPosition
                 if (duration > 0) {
                     progress = currentPosition.toFloat() / duration.toFloat()
                 }
             }
+
             kotlinx.coroutines.delay(100)
         }
     }
     
     Surface(
-        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+        color = containerColor,
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth().height(80.dp)
     ) {
@@ -1270,20 +1398,21 @@ fun AudioPlayerComponent(audioUrl: String) {
         ) {
             Surface(
                 onClick = {
+                    val player = mediaPlayer ?: return@Surface
                     if (isPlaying) {
-                        mediaPlayer.pause()
+                        player.pause()
                         isPlaying = false
                     } else {
-                        mediaPlayer.start()
+                        player.start()
                         isPlaying = true
                         try {
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                                mediaPlayer.playbackParams = mediaPlayer.playbackParams.setSpeed(playbackSpeed)
+                                player.playbackParams = player.playbackParams.setSpeed(playbackSpeed)
                             }
                         } catch (e: Exception) {}
                     }
                 },
-                color = MaterialTheme.colorScheme.primary,
+                color = contentColor,
                 shape = CircleShape,
                 modifier = Modifier.size(44.dp)
             ) {
@@ -1302,17 +1431,18 @@ fun AudioPlayerComponent(audioUrl: String) {
                     }
                     if (isPlaying) {
                         try {
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                                mediaPlayer.playbackParams = mediaPlayer.playbackParams.setSpeed(playbackSpeed)
+                            val player = mediaPlayer
+                            if (player != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                player.playbackParams = player.playbackParams.setSpeed(playbackSpeed)
                             }
                         } catch (e: Exception) {}
                     }
                 },
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                color = contentColor.copy(alpha = 0.1f),
                 shape = RoundedCornerShape(8.dp),
                 modifier = Modifier.padding(4.dp)
             ) {
-                Text(text = "${playbackSpeed}x", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                Text(text = "${playbackSpeed}x", color = contentColor, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
             }
 
             Spacer(modifier = Modifier.width(8.dp))
@@ -1322,10 +1452,11 @@ fun AudioPlayerComponent(audioUrl: String) {
                 onProgressChange = { newProgress ->
                     progress = newProgress
                     val seekToPos = (progress * duration).toInt()
-                    mediaPlayer.seekTo(seekToPos)
+                    mediaPlayer?.seekTo(seekToPos)
                     currentPosition = seekToPos
                 },
                 audioUrl = audioUrl,
+                primaryColor = contentColor,
                 modifier = Modifier.weight(1f).height(32.dp).padding(horizontal = 8.dp)
             )
 
@@ -1333,7 +1464,7 @@ fun AudioPlayerComponent(audioUrl: String) {
 
             val currStr = String.format("%02d:%02d", (currentPosition / 1000) / 60, (currentPosition / 1000) % 60)
             val durStr = String.format("%02d:%02d", (duration / 1000) / 60, (duration / 1000) % 60)
-            Text(text = "$currStr / $durStr", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text = "$currStr / $durStr", fontSize = 11.sp, color = onSurfaceColor)
         }
     }
 }
@@ -1345,6 +1476,7 @@ fun WaveformSlider(
     progress: Float,
     onProgressChange: (Float) -> Unit,
     audioUrl: String,
+    primaryColor: Color = MaterialTheme.colorScheme.primary,
     modifier: Modifier = Modifier
 ) {
     val seed = audioUrl.hashCode().toLong()
@@ -1356,8 +1488,6 @@ fun WaveformSlider(
             0.2f + random.nextFloat() * 0.8f
         }
     }
-    
-    val primaryColor = MaterialTheme.colorScheme.primary
     
     androidx.compose.foundation.Canvas(
         modifier = modifier

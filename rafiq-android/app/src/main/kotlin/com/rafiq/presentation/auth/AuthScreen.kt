@@ -22,6 +22,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.autofill.ContentType
@@ -40,7 +41,11 @@ fun RafiqDropdown(
 ) {
     var expanded by remember { mutableStateOf(false) }
     
-    Box(modifier = modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(18.dp))
+            .clickable { expanded = true }
+    ) {
         RafiqTextField(
             value = value,
             onValueChange = {},
@@ -54,13 +59,6 @@ fun RafiqDropdown(
                 )
             },
             modifier = Modifier.fillMaxWidth()
-        )
-        
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .background(Color.Transparent)
-                .clickable { expanded = true }
         )
         
         MaterialTheme(
@@ -78,7 +76,7 @@ fun RafiqDropdown(
                         text = { Text(option) },
                         modifier = Modifier
                             .padding(horizontal = 8.dp, vertical = 4.dp)
-                            .clip(RoundedCornerShape(16.dp)),
+                            .clip(RoundedCornerShape(12.dp)),
                         onClick = {
                             onValueChange(option)
                             expanded = false
@@ -105,6 +103,7 @@ fun AuthScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
     var agreedToTerms by remember { mutableStateOf(false) }
+    var autoFilledPassword by remember { mutableStateOf<String?>(null) }
 
     var firstName by remember { mutableStateOf("") }
     var lastName by remember { mutableStateOf("") }
@@ -117,38 +116,116 @@ fun AuthScreen(
 
     BackHandler(enabled = !isLoginMode) {
         isLoginMode = true
+        viewModel.resetState()
     }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(state) {
         if (state is AuthState.Success) {
+            if (email.isNotBlank() && password.isNotBlank() && password != autoFilledPassword) {
+                // Trigger Google Password Save Bottom Sheet via CredentialManager
+                com.rafiq.presentation.auth.CredentialManagerHelper.savePassword(context, email, password)
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val autofillManager = context.getSystemService(android.view.autofill.AutofillManager::class.java)
+                autofillManager?.commit()
+            }
             onAuthSuccess()
+        } else if (state is AuthState.Error) {
+            val errorMsg = (state as AuthState.Error).message
+            android.widget.Toast.makeText(context, errorMsg, android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    // Reset auth state on screen entry
+    LaunchedEffect(Unit) {
+        viewModel.resetState()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(com.rafiq.presentation.theme.BackgroundPrimary)
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(WindowInsets.systemBars.asPaddingValues())
-                .padding(24.dp)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Spacer(modifier = Modifier.windowInsetsTopHeight(WindowInsets.systemBars))
             Image(
                 painter = painterResource(id = R.drawable.logo),
                 contentDescription = "Rafiq Logo",
-                modifier = Modifier.size(120.dp)
+                modifier = Modifier.size(110.dp)
             )
             Spacer(modifier = Modifier.height(24.dp))
             
-            Text(
-                text = if (isLoginMode) "Welcome Back" else "Create Account",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground
-            )
+            // Segmented Tab Selector for Login / Sign Up (DualTone Gradient)
+            Surface(
+                shape = RoundedCornerShape(22.dp),
+                color = Color(0xFFF1F5F9),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .padding(4.dp)
+            ) {
+                Row(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(
+                                if (isLoginMode) androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(com.rafiq.presentation.theme.PrimaryAccent, com.rafiq.presentation.theme.TertiaryAccent))
+                                else androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+                            )
+                            .clickable {
+                                if (!isLoginMode) {
+                                    isLoginMode = true
+                                    viewModel.resetState()
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Login",
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = if (isLoginMode) Color.White else com.rafiq.presentation.theme.TextPrimary.copy(alpha = 0.6f)
+                        )
+                    }
+                    
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(
+                                if (!isLoginMode) androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(com.rafiq.presentation.theme.PrimaryAccent, com.rafiq.presentation.theme.TertiaryAccent))
+                                else androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+                            )
+                            .clickable {
+                                if (isLoginMode) {
+                                    isLoginMode = false
+                                    viewModel.resetState()
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Sign Up",
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = if (!isLoginMode) Color.White else com.rafiq.presentation.theme.TextPrimary.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            }
             
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
             RafiqTextField(
                 value = email,
@@ -240,7 +317,7 @@ fun AuthScreen(
                     keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
                     keyboardActions = androidx.compose.foundation.text.KeyboardActions(
                         onDone = {
-                            if (email.isNotBlank() && password.isNotBlank() && confirmPassword.isNotBlank() && firstName.isNotBlank() && lastName.isNotBlank() && username.isNotBlank() && bDay.isNotBlank() && bMonth.isNotBlank() && bYear.isNotBlank() && agreedToTerms) {
+                            if (email.isNotBlank() && password.isNotBlank() && password == confirmPassword && firstName.isNotBlank() && lastName.isNotBlank() && username.isNotBlank() && bDay.isNotBlank() && bMonth.isNotBlank() && bYear.isNotBlank() && agreedToTerms) {
                                 viewModel.signupWithEmail(email, password, firstName, lastName, username, gender, country, bDay, bMonth, bYear)
                             }
                         }
@@ -310,77 +387,41 @@ fun AuthScreen(
                 }
                 Spacer(modifier = Modifier.height(32.dp))
 
-                val isSignupValid = email.isNotBlank() && password.isNotBlank() && password == confirmPassword &&
-                    firstName.isNotBlank() && lastName.isNotBlank() && username.isNotBlank() &&
-                    bDay.isNotBlank() && bMonth.isNotBlank() && bYear.isNotBlank() && agreedToTerms
-
-                Button(
+                com.rafiq.presentation.components.common.DualToneButton(
+                    text = "Sign Up",
                     onClick = { 
-                        viewModel.signupWithEmail(
-                            email = email,
-                            password = password,
-                            firstName = firstName,
-                            lastName = lastName,
-                            username = username,
-                            genderStr = gender,
-                            countryStr = country,
-                            day = bDay,
-                            month = bMonth,
-                            year = bYear
-                        )
+                        if (email.isBlank() || password.isBlank() || firstName.isBlank() || lastName.isBlank() || username.isBlank() || bDay.isBlank() || bMonth.isBlank() || bYear.isBlank()) {
+                            android.widget.Toast.makeText(context, "Please fill in all required fields", android.widget.Toast.LENGTH_LONG).show()
+                        } else if (password != confirmPassword) {
+                            android.widget.Toast.makeText(context, "Passwords do not match", android.widget.Toast.LENGTH_LONG).show()
+                        } else if (!agreedToTerms) {
+                            android.widget.Toast.makeText(context, "Please agree to the User Agreement", android.widget.Toast.LENGTH_LONG).show()
+                        } else {
+                            viewModel.signupWithEmail(
+                                email = email,
+                                password = password,
+                                firstName = firstName,
+                                lastName = lastName,
+                                username = username,
+                                genderStr = gender,
+                                countryStr = country,
+                                day = bDay,
+                                month = bMonth,
+                                year = bYear
+                            )
+                        }
                     },
-                    modifier = Modifier.fillMaxWidth().height(60.dp),
-                    enabled = isSignupValid,
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                        contentColor = MaterialTheme.colorScheme.primary,
-                        disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
-                        disabledContentColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(0.dp)
-                ) {
-                    Text("Sign Up")
-                }
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = { isLoginMode = true },
-                    modifier = Modifier.fillMaxWidth().height(60.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFFF385C).copy(alpha = 0.1f),
-                        contentColor = Color(0xFFFF385C)
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(0.dp)
-                ) {
-                    Text("Cancel")
-                }
+                    modifier = Modifier.fillMaxWidth(),
+                    height = 60.dp
+                )
             } else {
                 Spacer(modifier = Modifier.height(32.dp))
-                Button(
+                com.rafiq.presentation.components.common.DualToneButton(
+                    text = "Login",
                     onClick = { viewModel.loginWithEmail(email, password) },
-                    modifier = Modifier.fillMaxWidth().height(60.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                        contentColor = MaterialTheme.colorScheme.primary
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(0.dp)
-                ) {
-                    Text("Login")
-                }
-                
-                TextButton(onClick = { isLoginMode = false }) {
-                    Text(
-                        buildAnnotatedString {
-                            append("Don't have an account? ")
-                            withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.primary)) {
-                                append("Sign Up")
-                            }
-                        }
-                    )
-                }
+                    modifier = Modifier.fillMaxWidth(),
+                    height = 60.dp
+                )
             }
 
             if (state is AuthState.Error) {

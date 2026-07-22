@@ -7,8 +7,8 @@ import kotlinx.serialization.Transient
 @Serializable
 data class Comment(
     val id: String = "",
-    @SerialName("post_id") val postId: String = "",
-    @SerialName("user_id") val userId: String = "",
+    @SerialName("post_id") val postId: String,
+    @SerialName("user_id") val userId: String? = null,
     @SerialName("text_content") val textContent: String = "",
     @SerialName("timestamp") val timestamp: Long = System.currentTimeMillis(),
     @SerialName("parent_id") val parentId: String? = null,

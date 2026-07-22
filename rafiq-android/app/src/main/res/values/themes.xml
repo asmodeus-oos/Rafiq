@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Rafiq.Splash" parent="@android:style/Theme.Material.Light.NoActionBar">
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
-        <item name="android:windowSplashScreenBackground">#F5F7FA</item>
+    <style name="Theme.Rafiq.Splash" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/logo</item>
+        <item name="android:windowSplashScreenBackground">#FAF9FF</item>
+        <item name="postSplashScreenTheme">@style/Theme.Rafiq</item>
+    </style>
+
+    <style name="Theme.Rafiq" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">#FAF9FF</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 </resources>

@@ -1,5 +1,6 @@
 package com.rafiq.presentation.auth
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rafiq.domain.model.Gender
@@ -7,21 +8,26 @@ import com.rafiq.domain.model.OnlineStatus
 import com.rafiq.domain.model.Tier
 import com.rafiq.domain.model.User
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.auth.providers.builtin.Email
 import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.postgrest.query.Columns
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import android.content.Context
-import dagger.hilt.android.qualifiers.ApplicationContext
-import io.github.jan.supabase.auth.status.SessionStatus
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+
+sealed class AuthState {
+    object Idle : AuthState()
+    object Loading : AuthState()
+    object Success : AuthState()
+    object NeedsExtraInfo : AuthState()
+    data class Error(val message: String) : AuthState()
+}
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
@@ -32,35 +38,42 @@ class AuthViewModel @Inject constructor(
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
-    init {
-        viewModelScope.launch {
-            supabaseClient.auth.sessionStatus.collectLatest { status ->
-                if (status is SessionStatus.Authenticated) {
-                    val sharedPrefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-                    val pendingProfileJson = sharedPrefs.getString("pending_profile", null)
-                    
-                    // We don't need tripwire here anymore, handled in MainActivity
-                    _authState.value = AuthState.Success
-                }
-            }
-        }
+    fun resetState() {
+        _authState.value = AuthState.Idle
     }
 
-    fun loginWithEmail(email: String, password: String) = viewModelScope.launch {
-        if (email.isBlank() || password.isBlank()) {
+    fun loginWithEmail(email: String, password: String) = viewModelScope.launch(Dispatchers.IO) {
+        val trimmedEmail = email.trim()
+        val trimmedPassword = password.trim()
+
+        if (trimmedEmail.isBlank() || trimmedPassword.isBlank()) {
             _authState.value = AuthState.Error("Email and password cannot be empty")
             return@launch
         }
+
         _authState.value = AuthState.Loading
         try {
+            // Validate credentials with Supabase Auth API
             supabaseClient.auth.signInWith(Email) {
-                this.email = email
-                this.password = password
+                this.email = trimmedEmail
+                this.password = trimmedPassword
             }
-            _authState.value = AuthState.Success
+
+            val currentUid = supabaseClient.auth.currentUserOrNull()?.id
+            if (currentUid != null) {
+                ensureUserProfileExists(currentUid, trimmedEmail)
+                _authState.value = AuthState.Success
+            } else {
+                _authState.value = AuthState.Error("Authentication failed: No user returned")
+            }
         } catch (e: Exception) {
             e.printStackTrace()
-            _authState.value = AuthState.Error(e.message ?: "Login failed")
+            val errorMsg = when {
+                e.message?.contains("Invalid login credentials", ignoreCase = true) == true -> "Invalid email or password"
+                e.message?.contains("Email not confirmed", ignoreCase = true) == true -> "Please confirm your email address"
+                else -> e.message ?: "Login failed. Please check your credentials."
+            }
+            _authState.value = AuthState.Error(errorMsg)
         }
     }
 
@@ -75,19 +88,28 @@ class AuthViewModel @Inject constructor(
         day: String,
         month: String,
         year: String
-    ) = viewModelScope.launch {
-        if (email.isBlank() || password.isBlank() || firstName.isBlank() || lastName.isBlank() || username.isBlank()) {
+    ) = viewModelScope.launch(Dispatchers.IO) {
+        val trimmedEmail = email.trim()
+        val trimmedPassword = password.trim()
+        val trimmedFirstName = firstName.trim()
+        val trimmedLastName = lastName.trim()
+        val trimmedUsername = username.trim()
+
+        if (trimmedEmail.isBlank() || trimmedPassword.isBlank() || trimmedFirstName.isBlank() || trimmedLastName.isBlank() || trimmedUsername.isBlank()) {
             _authState.value = AuthState.Error("Please fill in all required fields")
             return@launch
         }
+
         _authState.value = AuthState.Loading
         try {
-            val user = supabaseClient.auth.signUpWith(Email) {
-                this.email = email
-                this.password = password
+            // Sign up with Supabase Auth
+            supabaseClient.auth.signUpWith(Email) {
+                this.email = trimmedEmail
+                this.password = trimmedPassword
             }
-            
-            // Generate the user object but cache it instead of inserting immediately
+
+            val uid = supabaseClient.auth.currentUserOrNull()?.id
+
             val birthYear = year.toIntOrNull() ?: 2000
             val birthMonth = month.toIntOrNull() ?: 1
             val birthDay = day.toIntOrNull() ?: 1
@@ -101,17 +123,17 @@ class AuthViewModel @Inject constructor(
             if (currentMonth < birthMonth || (currentMonth == birthMonth && currentDay < birthDay)) {
                 calculatedAge--
             }
-            
+
             val parsedGender = try {
                 Gender.valueOf(genderStr.uppercase())
             } catch (e: Exception) {
                 Gender.OTHER
             }
-            
-            val pendingUser = User(
-                id = "", // Will be assigned after email confirmation
-                name = "$firstName $lastName",
-                username = username,
+
+            val newProfile = User(
+                id = uid ?: "",
+                name = "$trimmedFirstName $trimmedLastName",
+                username = trimmedUsername,
                 age = calculatedAge,
                 gender = parsedGender,
                 avatar = "",
@@ -123,52 +145,85 @@ class AuthViewModel @Inject constructor(
                 isOwner = false,
                 country = countryStr
             )
-            
-            val uid = supabaseClient.auth.currentUserOrNull()?.id
+
+            // Save pending profile to SharedPreferences so email confirmation or login can restore it
+            try {
+                val format = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                val profileJson = format.encodeToString(User.serializer(), newProfile)
+                context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+                    .edit()
+                    .putString("pending_profile", profileJson)
+                    .apply()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
             if (uid != null) {
-                // Confirm email is OFF, we are instantly logged in
-                // Use a separate scope so navigation doesn't cancel the database insertion!
-                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try {
+                    supabaseClient.postgrest["users"].insert(newProfile)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            val isSessionActive = supabaseClient.auth.currentSessionOrNull() != null
+            if (isSessionActive && uid != null) {
+                _authState.value = AuthState.Success
+            } else {
+                _authState.value = AuthState.NeedsExtraInfo
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            val errorMsg = when {
+                e.message?.contains("User already registered", ignoreCase = true) == true -> "User with this email already exists"
+                else -> e.message ?: "Registration failed. Please try again."
+            }
+            _authState.value = AuthState.Error(errorMsg)
+        }
+    }
+
+    private suspend fun ensureUserProfileExists(uid: String, email: String) {
+        try {
+            val existing = supabaseClient.postgrest["users"]
+                .select(Columns.list("id")) { filter { eq("id", uid) } }
+                .decodeSingleOrNull<User>()
+
+            if (existing == null) {
+                val sharedPrefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
+                val pendingProfileJson = sharedPrefs.getString("pending_profile", null)
+                
+                var userToInsert: User? = null
+                if (pendingProfileJson != null) {
                     try {
-                        val finalUser = pendingUser.copy(id = uid)
-                        supabaseClient.postgrest["users"].insert(finalUser)
+                        val format = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+                        val pendingUser = format.decodeFromString<User>(pendingProfileJson)
+                        userToInsert = pendingUser.copy(id = uid)
+                        sharedPrefs.edit().remove("pending_profile").apply()
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
                 }
-                _authState.value = AuthState.Success
-            } else {
-                // Confirm email is ON, cache locally for MainActivity to pick up via deep link
-                val sharedPrefs = context.getSharedPreferences("auth_prefs", Context.MODE_PRIVATE)
-                val jsonString = Json.encodeToString(pendingUser)
-                sharedPrefs.edit().putString("pending_profile", jsonString).apply()
-                
-                _authState.value = AuthState.NeedsExtraInfo // Ask them to check their email
+
+                if (userToInsert == null) {
+                    val fallbackName = email.substringBefore("@").replace(".", " ").replaceFirstChar { it.uppercase() }
+                    userToInsert = User(
+                        id = uid,
+                        name = fallbackName,
+                        username = email.substringBefore("@"),
+                        age = 24,
+                        gender = Gender.OTHER,
+                        avatar = "",
+                        bio = "Welcome to RAFIQ!",
+                        onlineStatus = OnlineStatus.ONLINE,
+                        tier = Tier.FREE,
+                        country = ""
+                    )
+                }
+
+                supabaseClient.postgrest["users"].insert(userToInsert)
             }
-            
         } catch (e: Exception) {
             e.printStackTrace()
-            _authState.value = AuthState.Error(e.message ?: "Signup failed")
         }
     }
-
-    fun setAuthError(message: String) {
-        _authState.value = AuthState.Error(message)
-    }
-
-    fun setAuthLoading() {
-        _authState.value = AuthState.Loading
-    }
-
-    fun setAuthIdle() {
-        _authState.value = AuthState.Idle
-    }
-}
-
-sealed class AuthState {
-    object Idle : AuthState()
-    object Loading : AuthState()
-    object Success : AuthState()
-    object NeedsExtraInfo : AuthState()
-    data class Error(val message: String) : AuthState()
 }

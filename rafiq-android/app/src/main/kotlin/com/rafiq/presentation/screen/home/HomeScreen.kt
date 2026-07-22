@@ -13,10 +13,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.lazy.items
 
 import com.rafiq.R
@@ -27,19 +29,28 @@ import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 
+import io.github.jan.supabase.auth.auth
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     onNavigateToDiscovery: () -> Unit,
     onNavigateToRandomCall: () -> Unit,
-    onNavigateToProfile: (String?) -> Unit,
+    onNavigateToProfile: (String) -> Unit,
     onSignOut: () -> Unit,
     onNavigateToNotifications: () -> Unit,
+    onNavigateToChat: (String) -> Unit,
+    onNavigateToRoom: (String) -> Unit,
+    onNavigateToPostDetails: (String) -> Unit = {},
+    supabaseClient: io.github.jan.supabase.SupabaseClient? = null,
     viewModel: com.rafiq.presentation.screen.profile.ModernProfileViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
+    homeFeedViewModel: HomeFeedViewModel = androidx.hilt.navigation.compose.hiltViewModel(),
     notificationViewModel: com.rafiq.presentation.screen.notification.NotificationViewModel = androidx.hilt.navigation.compose.hiltViewModel()
 ) {
     val user by viewModel.user.collectAsState()
+    val homeUiState by homeFeedViewModel.uiState.collectAsState()
     val unreadNotificationsCount by notificationViewModel.unreadCount.collectAsState()
+    
     val tabs = listOf(
         stringResource(com.rafiq.R.string.home) to com.composables.icons.lucide.R.drawable.lucide_ic_house,
         stringResource(com.rafiq.R.string.voice) to com.composables.icons.lucide.R.drawable.lucide_ic_mic_vocal,
@@ -50,10 +61,29 @@ fun HomeScreen(
 
     val pagerState = rememberPagerState(pageCount = { tabs.size })
     val coroutineScope = rememberCoroutineScope()
+    val isUserLoading by viewModel.isLoading.collectAsState()
     var isProfileMenuExpanded by remember { mutableStateOf(false) }
+    var showCreatePostSheet by remember { mutableStateOf(false) }
     
+    val context = androidx.compose.ui.platform.LocalContext.current
+    androidx.activity.compose.BackHandler {
+        if (pagerState.currentPage != 0) {
+            coroutineScope.launch {
+                pagerState.animateScrollToPage(0)
+            }
+        } else {
+            (context as? android.app.Activity)?.moveTaskToBack(true)
+        }
+    }
+
+    LaunchedEffect(user, isUserLoading) {
+        if (!isUserLoading && user == null && supabaseClient?.auth?.currentUserOrNull() == null) {
+            onSignOut()
+        }
+    }
+
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.White,
         topBar = {
             TopAppBar(
                 title = {
@@ -92,20 +122,22 @@ fun HomeScreen(
                                 }
                             }
                         }
-                        IconButton(
-                            onClick = {
-                                android.widget.Toast.makeText(context, context.getString(com.rafiq.R.string.vip_only_filter_users_by_gender), android.widget.Toast.LENGTH_SHORT).show()
-                            }
-                        ) {
-                            Icon(painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_funnel), contentDescription = stringResource(com.rafiq.R.string.filter_vip_only), tint = MaterialTheme.colorScheme.onSurface)
-                        }
                     }
                 },
                 actions = {
+                    // VIP Star Badge
+                    IconButton(onClick = {}) {
+                        Icon(
+                            painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_star),
+                            contentDescription = "VIP",
+                            tint = Color(0xFFFFD700)
+                        )
+                    }
+
                     Box(
                         modifier = Modifier
                             .padding(end = 16.dp)
-                            .size(40.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
                             .clickable { isProfileMenuExpanded = true },
@@ -116,7 +148,7 @@ fun HomeScreen(
                                 painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_user),
                                 contentDescription = "Avatar",
                                 tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         } else {
                             coil3.compose.AsyncImage(
@@ -142,26 +174,11 @@ fun HomeScreen(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp).clip(RoundedCornerShape(12.dp)),
                                 onClick = { 
                                     isProfileMenuExpanded = false 
-                                    onNavigateToProfile(null)
+                                    onNavigateToProfile(user?.id ?: "")
                                 },
                                 leadingIcon = { Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_user), contentDescription = null) },
                                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
                             )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(com.rafiq.R.string.vip_membership), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.tertiary) },
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp).clip(RoundedCornerShape(12.dp)),
-                                onClick = { isProfileMenuExpanded = false },
-                                leadingIcon = { Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_star), contentDescription = null, tint = MaterialTheme.colorScheme.tertiary) },
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(com.rafiq.R.string.settings), style = MaterialTheme.typography.titleSmall) },
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp).clip(RoundedCornerShape(12.dp)),
-                                onClick = { isProfileMenuExpanded = false },
-                                leadingIcon = { Icon(painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_settings), contentDescription = null) },
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
-                            )
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                             DropdownMenuItem(
                                 text = { Text(stringResource(com.rafiq.R.string.sign_out), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error) },
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp).clip(RoundedCornerShape(12.dp)),
@@ -176,14 +193,14 @@ fun HomeScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = androidx.compose.ui.graphics.Color.White,
-                    scrolledContainerColor = androidx.compose.ui.graphics.Color.White
+                    containerColor = Color.White,
+                    scrolledContainerColor = Color.White
                 )
             )
         },
         bottomBar = {
             NavigationBar(
-                containerColor = androidx.compose.ui.graphics.Color.White,
+                containerColor = Color.White,
                 tonalElevation = 0.dp
             ) {
                 tabs.forEachIndexed { index, pair ->
@@ -207,157 +224,237 @@ fun HomeScreen(
                             selectedTextColor = MaterialTheme.colorScheme.primary,
                             unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                            indicatorColor = com.rafiq.presentation.theme.PrimaryAccent.copy(alpha = 0.18f)
                         )
                     )
                 }
             }
         },
         floatingActionButton = {
-            val fabIcon = when(pagerState.currentPage) {
-                0 -> com.composables.icons.lucide.R.drawable.lucide_ic_plus
+            val fabIcon = when (pagerState.currentPage) {
                 1 -> com.composables.icons.lucide.R.drawable.lucide_ic_phone
                 2 -> com.composables.icons.lucide.R.drawable.lucide_ic_pen_line
-                3 -> com.composables.icons.lucide.R.drawable.lucide_ic_scan
-                4 -> com.composables.icons.lucide.R.drawable.lucide_ic_pen
                 else -> com.composables.icons.lucide.R.drawable.lucide_ic_plus
             }
-            
-            FloatingActionButton(
-                onClick = {},
-                shape = RoundedCornerShape(16.dp),
-                containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                contentColor = MaterialTheme.colorScheme.primary,
-                elevation = FloatingActionButtonDefaults.elevation(0.dp)
-            ) {
-                Icon(painter = painterResource(id = fabIcon), contentDescription = "FAB")
-            }
+            com.rafiq.presentation.components.common.DualToneFAB(
+                iconRes = fabIcon,
+                contentDescription = "Action FAB",
+                onClick = {
+                    if (pagerState.currentPage == 0 || pagerState.currentPage == 2) {
+                        showCreatePostSheet = true
+                    } else if (pagerState.currentPage == 1) {
+                        onNavigateToRandomCall()
+                    }
+                }
+            )
         }
     ) { innerPadding ->
-        val suggestedUsers by viewModel.suggestedUsers.collectAsState()
-        
-        val isLoading by viewModel.isLoading.collectAsState()
         HorizontalPager(
             state = pagerState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) { page ->
-            if (page == 0) {
-                HomeFeedContent(
-                    onRandomCall = onNavigateToRandomCall,
-                    onDiscovery = onNavigateToDiscovery,
-                    onUserClick = { userId -> onNavigateToProfile(userId) },
-                    currentUserTier = user?.tier ?: com.rafiq.domain.model.Tier.FREE, 
-                    suggestedUsers = suggestedUsers,
-                    isLoading = isLoading,
-                    onRefresh = { viewModel.refresh() }
+            when (page) {
+                0 -> HomeFeedContent(
+                    uiState = homeUiState,
+                    onUserClick = onNavigateToProfile,
+                    onRoomClick = onNavigateToRoom,
+                    onRefresh = { homeFeedViewModel.refreshFeed() },
+                    onLike = { homeFeedViewModel.likeUser(it) },
+                    onSkip = { homeFeedViewModel.skipUser(it) }
                 )
-            } else {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Content for Tab $page", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                1 -> VoiceRoomsTab(
+                    onJoinRoom = onNavigateToRoom
+                )
+                2 -> com.rafiq.presentation.screen.post.PostsTabScreen(
+                    onNavigateToPostDetails = onNavigateToPostDetails
+                )
+                3 -> {
+                    if (supabaseClient != null) {
+                        SearchTab(
+                            supabaseClient = supabaseClient,
+                            currentUserId = viewModel.currentUserId,
+                            onNavigateToProfile = { uid -> onNavigateToProfile(uid) },
+                            onNavigateToPost = onNavigateToPostDetails
+                        )
+                    } else {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("Search unavailable", color = Color.Gray)
+                        }
+                    }
+                }
+                4 -> {
+                    val chatListViewModel: com.rafiq.presentation.screen.chat.ChatListViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+                    val chats by chatListViewModel.chats.collectAsState()
+                    val isChatLoading by chatListViewModel.isLoading.collectAsState()
+                    
+                    com.rafiq.presentation.screen.chat.ChatListScreen(
+                        chats = chats,
+                        isLoading = isChatLoading,
+                        onRefresh = { chatListViewModel.refresh() },
+                        onNavigateToChat = onNavigateToChat,
+                        onNavigateBack = {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(0)
+                            }
+                        }
+                    )
                 }
             }
         }
+        
+        // ... (ModalBottomSheet logic)
     }
 }
 
 @OptIn(ExperimentalMaterialApi::class)
 @Composable
 fun HomeFeedContent(
-    onRandomCall: () -> Unit,
-    onDiscovery: () -> Unit,
+    uiState: HomeUiState,
     onUserClick: (String) -> Unit,
-    currentUserTier: com.rafiq.domain.model.Tier = com.rafiq.domain.model.Tier.FREE,
-    suggestedUsers: List<com.rafiq.domain.model.User> = emptyList(),
-    isLoading: Boolean = false,
-    onRefresh: () -> Unit = {}
+    onRoomClick: (String) -> Unit,
+    onRefresh: () -> Unit,
+    onLike: (String) -> Unit,
+    onSkip: (String) -> Unit
 ) {
-    BoxWithConstraints {
-        val isSmallScreen = maxWidth < 360.dp
-        val columns = if (isSmallScreen) 1 else 2
-        
-        val pullRefreshState = rememberPullRefreshState(refreshing = isLoading, onRefresh = onRefresh)
+    val pullRefreshState = rememberPullRefreshState(refreshing = uiState.isLoading, onRefresh = onRefresh)
 
-        Box(
-            modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)
-        ) {
+    val hasContent = uiState.dailyMatch != null || uiState.trendingRooms.isNotEmpty() || uiState.recommendedPartners.isNotEmpty()
+
+    Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
+        if (uiState.isLoading && !hasContent) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = com.rafiq.presentation.theme.PrimaryAccent)
+            }
+        } else if (!uiState.isLoading && !hasContent) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_sparkles),
+                        contentDescription = null,
+                        modifier = Modifier.size(56.dp),
+                        tint = com.rafiq.presentation.theme.PrimaryAccent
+                    )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Welcome to RAFIQ!",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Pull down to refresh or check out the search tab to discover new people.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+        }
+    } else {
             androidx.compose.foundation.lazy.LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-            item {
-                // 4 Games Cards
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    val voiceGameStr = stringResource(com.rafiq.R.string.voice_game)
-                    val soulGameStr = stringResource(com.rafiq.R.string.soul_game)
-                    val games = listOf(voiceGameStr, soulGameStr, stringResource(com.rafiq.R.string.party_game), stringResource(com.rafiq.R.string.group_video_game))
-                    val rows = games.chunked(columns)
-                    for (row in rows) {
+                // 1. Daily Discovery Card (Priority Match)
+                uiState.dailyMatch?.let { (user, score) ->
+                    item {
+                        Text(
+                            text = "Match of the Day",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        com.rafiq.presentation.components.home.DiscoveryCard(
+                            user = user,
+                            score = score,
+                            onLike = { onLike(user.id) },
+                            onSkip = { onSkip(user.id) },
+                            onWave = { /* Icebreaker */ }
+                        )
+                    }
+                }
+
+                // 2. Trending Voice Rooms (Horizontal)
+                if (uiState.trendingRooms.isNotEmpty()) {
+                    item {
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Live Rooms",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                TextButton(onClick = {}) {
+                                    Text("View All", color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                            androidx.compose.foundation.lazy.LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                contentPadding = PaddingValues(vertical = 8.dp)
+                            ) {
+                                items(uiState.trendingRooms) { room ->
+                                    com.rafiq.presentation.components.home.VoiceRoomItem(
+                                        room = room,
+                                        onClick = { onRoomClick(room.id) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 3. Recommended Partners (Nearby/Compatibility Grid)
+                if (uiState.recommendedPartners.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "People for You",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+                    }
+                    
+                    // Using chunked to simulate a grid in LazyColumn
+                    val rows = uiState.recommendedPartners.chunked(2)
+                    items(rows) { rowUsers ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            for (game in row) {
-                                Card(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .aspectRatio(1f)
-                                        .clickable {
-                                            if (game == voiceGameStr) onRandomCall()
-                                            else if (game == soulGameStr) onDiscovery()
-                                        },
-                                    shape = RoundedCornerShape(24.dp),
-                                    colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(
-                                                androidx.compose.ui.graphics.Brush.linearGradient(
-                                                    colors = listOf(
-                                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                                        MaterialTheme.colorScheme.secondary.copy(alpha = 0.05f)
-                                                    )
-                                                )
-                                            ), 
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(game, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                    }
+                            rowUsers.forEach { user ->
+                                Box(modifier = Modifier.weight(1f)) {
+                                    SuggestedUserCard(user = user, onUserClick = onUserClick)
                                 }
                             }
-                            if (row.size < columns) {
+                            if (rowUsers.size == 1) {
                                 Spacer(modifier = Modifier.weight(1f))
                             }
                         }
                     }
                 }
             }
-
-            val maxSuggestions = when(currentUserTier) {
-                com.rafiq.domain.model.Tier.FREE -> 10
-                com.rafiq.domain.model.Tier.GOLD -> 100
-                com.rafiq.domain.model.Tier.PLATINUM -> 250
-                com.rafiq.domain.model.Tier.DIAMOND -> 500
-            }
-
-            val usersList = suggestedUsers.take(maxSuggestions)
-            items(items = usersList) { user ->
-                SuggestedUserCard(user = user, onUserClick = onUserClick)
-                Spacer(modifier = Modifier.height(12.dp))
-            }
         }
-            PullRefreshIndicator(
-                refreshing = isLoading,
-                state = pullRefreshState,
-                modifier = Modifier.align(Alignment.TopCenter)
-            )
-        }
+
+        PullRefreshIndicator(
+            refreshing = uiState.isLoading,
+            state = pullRefreshState,
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
     }
 }
 

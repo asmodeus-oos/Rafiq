@@ -103,52 +103,54 @@ fun EditProfileScreen(
                 Text(stringResource(com.rafiq.R.string.edit_profile), fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = MaterialTheme.colorScheme.onBackground)
 
                 val coroutineScope = rememberCoroutineScope()
-                Surface(
-                    onClick = {
-                        if (isSaving) return@Surface
-                        isSaving = true
-                        val updatedUser = user!!.copy(
-                            name = name,
-                            age = ageText.toIntOrNull() ?: user!!.age,
-                            bio = bio,
-                            phone = phone,
-                            country = country,
-                            governorate = governorate,
-                            showAge = showAge,
-                            showLocation = showLocation,
-                            hobbies = hobbies,
-                            links = (user?.links ?: emptyMap()) + mapOf("showHobbies" to showHobbies.toString())
-                        )
-                        coroutineScope.launch {
-                            val skipCompression = user?.isOwner == true || user?.tier == com.rafiq.domain.model.Tier.PLATINUM || user?.tier == com.rafiq.domain.model.Tier.DIAMOND || user?.isVerified == true
-                            val avatarBytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                newAvatarUri?.let { uri -> 
-                                    val bytes = androidContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                                    if (bytes != null && !skipCompression) com.rafiq.util.ImageUtils.compressImage(bytes) else bytes
+                Box(
+                    modifier = Modifier
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(com.rafiq.presentation.theme.PrimaryAccent, com.rafiq.presentation.theme.TertiaryAccent)))
+                        .clickable {
+                            if (isSaving) return@clickable
+                            isSaving = true
+                            val updatedUser = user!!.copy(
+                                name = name,
+                                age = ageText.toIntOrNull() ?: user!!.age,
+                                bio = bio,
+                                phone = phone,
+                                country = country,
+                                governorate = governorate,
+                                showAge = showAge,
+                                showLocation = showLocation,
+                                hobbies = hobbies,
+                                links = (user?.links ?: emptyMap()) + mapOf("showHobbies" to showHobbies.toString())
+                            )
+                            coroutineScope.launch {
+                                val skipCompression = user?.isOwner == true || user?.tier == com.rafiq.domain.model.Tier.PLATINUM || user?.tier == com.rafiq.domain.model.Tier.DIAMOND || user?.isVerified == true
+                                val avatarBytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    newAvatarUri?.let { uri -> 
+                                        val bytes = androidContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                                        if (bytes != null && !skipCompression) com.rafiq.util.ImageUtils.compressImage(bytes) else bytes
+                                    }
+                                }
+                                val coverBytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    newCoverUri?.let { uri -> 
+                                        val bytes = androidContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                                        if (bytes != null && !skipCompression) com.rafiq.util.ImageUtils.compressImage(bytes) else bytes
+                                    }
+                                }
+                                val success = viewModel.updateProfile(updatedUser, avatarBytes, coverBytes)
+                                isSaving = false
+                                if (success) {
+                                    onNavigateBack() 
+                                } else {
+                                    android.widget.Toast.makeText(androidContext, "Failed to save profile. Please check database rules.", android.widget.Toast.LENGTH_LONG).show()
                                 }
                             }
-                            val coverBytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                newCoverUri?.let { uri -> 
-                                    val bytes = androidContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                                    if (bytes != null && !skipCompression) com.rafiq.util.ImageUtils.compressImage(bytes) else bytes
-                                }
-                            }
-                            val success = viewModel.updateProfile(updatedUser, avatarBytes, coverBytes)
-                            isSaving = false
-                            if (success) {
-                                onNavigateBack() 
-                            } else {
-                                android.widget.Toast.makeText(androidContext, "Failed to save profile. Please check your Firebase Storage/Database rules.", android.widget.Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    },
-                    color = MaterialTheme.colorScheme.primary,
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.height(48.dp)
+                        },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 16.dp)) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 20.dp)) {
                         if (isSaving) {
-                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
                         } else {
                             Text("Save", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
@@ -159,7 +161,7 @@ fun EditProfileScreen(
     ) { paddingValues ->
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 16.dp),
@@ -187,13 +189,17 @@ fun EditProfileScreen(
                     Icon(painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_image), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 
-                Surface(
-                    color = MaterialTheme.colorScheme.primary,
-                    shape = CircleShape,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp).size(36.dp),
-                    shadowElevation = 4.dp
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(8.dp)
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(com.rafiq.presentation.theme.PrimaryAccent, com.rafiq.presentation.theme.TertiaryAccent)))
+                        .clickable { coverPickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_camera), contentDescription = stringResource(com.rafiq.R.string.edit_photo), tint = Color.White, modifier = Modifier.padding(8.dp))
+                    Icon(painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_camera), contentDescription = stringResource(com.rafiq.R.string.edit_photo), tint = Color.White, modifier = Modifier.size(18.dp))
                 }
             }
             
@@ -214,14 +220,16 @@ fun EditProfileScreen(
                         contentScale = ContentScale.Crop
                     )
                 }
-                Surface(
-                    onClick = { photoPickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                    color = MaterialTheme.colorScheme.primary,
-                    shape = CircleShape,
-                    modifier = Modifier.size(36.dp).offset(x = 4.dp, y = 4.dp),
-                    shadowElevation = 4.dp
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .offset(x = 4.dp, y = 4.dp)
+                        .clip(CircleShape)
+                        .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(com.rafiq.presentation.theme.PrimaryAccent, com.rafiq.presentation.theme.TertiaryAccent)))
+                        .clickable { photoPickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_camera), contentDescription = stringResource(com.rafiq.R.string.edit_photo), tint = Color.White, modifier = Modifier.padding(8.dp))
+                    Icon(painter = painterResource(id = com.composables.icons.lucide.R.drawable.lucide_ic_camera), contentDescription = stringResource(com.rafiq.R.string.edit_photo), tint = Color.White, modifier = Modifier.size(18.dp))
                 }
             }
 
@@ -249,28 +257,33 @@ fun EditProfileScreen(
                 val presetHobbies = listOf("Football", "Basketball", "Gym", "Running", "Gaming", "Coding", "Technology", "Reading", "Photography", "Movies", "TV Shows", "Anime", "Music", "Singing", "Dancing", "Travel", "Cooking", "Coffee", "Fashion", "Pets", "Meditation", "Volunteering", "Entrepreneurship", "Concerts", "Fitness")
                 presetHobbies.forEach { hobby ->
                     val selected = hobbies.contains(hobby)
-                    Surface(
-                        onClick = { hobbies = if (selected) hobbies - hobby else hobbies + hobby },
-                        shape = RoundedCornerShape(16.dp),
-                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                        modifier = Modifier.height(32.dp)
+                    val bgBrush = if (selected) {
+                        androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(com.rafiq.presentation.theme.PrimaryAccent, com.rafiq.presentation.theme.TertiaryAccent))
+                    } else {
+                        androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.surfaceVariant))
+                    }
+                    Box(
+                        modifier = Modifier
+                            .height(34.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(bgBrush)
+                            .clickable { hobbies = if (selected) hobbies - hobby else hobbies + hobby },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 12.dp)) {
-                            Text(hobby, color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-                        }
+                        Text(hobby, color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.padding(horizontal = 14.dp))
                     }
                 }
                 
                 hobbies.filter { it !in presetHobbies }.forEach { hobby ->
-                    Surface(
-                        onClick = { hobbies = hobbies - hobby },
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.height(32.dp)
+                    Box(
+                        modifier = Modifier
+                            .height(34.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(com.rafiq.presentation.theme.PrimaryAccent, com.rafiq.presentation.theme.TertiaryAccent)))
+                            .clickable { hobbies = hobbies - hobby },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 12.dp)) {
-                            Text("$hobby (x)", color = Color.White, fontSize = 14.sp)
-                        }
+                        Text("$hobby (x)", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 14.dp))
                     }
                 }
             }
@@ -283,14 +296,16 @@ fun EditProfileScreen(
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Button(onClick = { 
-                    if (otherHobbyText.isNotBlank() && !hobbies.contains(otherHobbyText)) {
-                        hobbies = hobbies + otherHobbyText
-                        otherHobbyText = ""
-                    }
-                }) {
-                    Text("Add")
-                }
+                com.rafiq.presentation.components.common.DualToneButton(
+                    text = "Add",
+                    onClick = { 
+                        if (otherHobbyText.isNotBlank() && !hobbies.contains(otherHobbyText)) {
+                            hobbies = hobbies + otherHobbyText
+                            otherHobbyText = ""
+                        }
+                    },
+                    height = 48.dp
+                )
             }
             Spacer(modifier = Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {

@@ -70,7 +70,7 @@ dependencies {
     implementation("io.github.jan-tennert.supabase:storage-kt")
     implementation("io.github.jan-tennert.supabase:realtime-kt")
     implementation("io.github.jan-tennert.supabase:auth-kt")
-    implementation("io.ktor:ktor-client-android:3.0.3")
+    implementation("io.ktor:ktor-client-okhttp:3.0.3")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 
     // Hilt Navigation Compose (Fixes hiltViewModel unresolved reference)
@@ -111,6 +111,10 @@ dependencies {
     implementation("com.google.android.play:review-ktx:2.0.1")
     implementation("com.google.android.play:app-update-ktx:2.1.0")
 
+    // Android Credential Manager for Google Passwords / Auto-fill
+    implementation("androidx.credentials:credentials:1.3.0-beta02")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0-beta02")
+
     // Testing Dependencies
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.06.00"))
@@ -120,5 +124,14 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     
     implementation("com.google.accompanist:accompanist-swiperefresh:0.34.0")
+    
+    // Socket.IO for Firebase-free Push Notifications
+    implementation("io.socket:socket.io-client:2.1.0")
+
+    // WebRTC for Active Call Screen
+    implementation("io.getstream:stream-webrtc-android:1.3.8")
+
+    // Google Play Billing for Diamonds Economy
+    implementation("com.android.billingclient:billing-ktx:6.2.0")
 }
 dependencies { implementation(project(":designsystem")) }

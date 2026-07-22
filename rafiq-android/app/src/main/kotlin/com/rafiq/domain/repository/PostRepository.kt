@@ -11,6 +11,7 @@ interface PostRepository {
     suspend fun updatePost(postId: String, newTextContent: String): Result<Unit>
     suspend fun deletePost(postId: String): Result<Unit>
     suspend fun likePost(postId: String, userId: String): Result<Unit>
+    suspend fun getPostLikers(postId: String): Result<List<com.rafiq.domain.model.User>>
     
     fun getCommentsForPost(postId: String): Flow<List<Comment>>
     suspend fun createComment(comment: Comment): Result<Unit>

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import javax.inject.Inject
 
 @HiltViewModel
@@ -39,29 +40,44 @@ class PostDetailsViewModel @Inject constructor(
 
     val currentUserId = supabaseClient.auth.currentUserOrNull()?.id
 
+    // Track the main loading job so we can cancel it before restarting
+    private var loadJob: kotlinx.coroutines.Job? = null
+
     fun loadPostDetails(postId: String) {
-        viewModelScope.launch {
+        println("RAFIQ_DEBUG: loadPostDetails called for $postId")
+        // Cancel previous job to avoid duplicate pollers / flow collectors
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             _isLoading.value = true
             
-            // Load Post
-            val postResult = postRepository.getPostById(postId)
-            postResult.getOrNull()?.let { p ->
-                _post.value = p
-                // Load Post User
-                try {
-                    val u = supabaseClient.postgrest["users"]
-                        .select(Columns.ALL) { filter { eq("id", p.userId) } }
-                        .decodeSingle<User>()
-                    _postUser.value = u
-                } catch (e: Exception) {
-                    e.printStackTrace()
+            // Poll Post and User every 1 second
+            launch {
+                while(isActive) {
+                    println("RAFIQ_DEBUG: Polling post data for $postId")
+                    val postResult = postRepository.getPostById(postId)
+                    postResult.getOrNull()?.let { p ->
+                        println("RAFIQ_DEBUG: Polled post: $p")
+                        _post.value = p
+                        try {
+                            val u = supabaseClient.postgrest["users"]
+                                .select(Columns.ALL) { filter { eq("id", p.userId) } }
+                                .decodeSingle<User>()
+                            _postUser.value = u
+                        } catch (e: Exception) {
+                            println("RAFIQ_DEBUG: Polling user error: ${e.message}")
+                            e.printStackTrace()
+                        }
+                    }
+                    kotlinx.coroutines.delay(1000)
                 }
             }
             
             // Load Comments
+            println("RAFIQ_DEBUG: Collecting comments flow for $postId")
             postRepository.getCommentsForPost(postId).collect { commentList ->
+                println("RAFIQ_DEBUG: Received ${commentList.size} comments from flow")
                 // Fetch users for comments
-                val userIds = commentList.map { it.userId }.distinct()
+                val userIds = commentList.mapNotNull { it.userId }.distinct()
                 val usersMap = if (userIds.isNotEmpty()) {
                     try {
                         supabaseClient.postgrest["users"]
@@ -69,6 +85,7 @@ class PostDetailsViewModel @Inject constructor(
                             .decodeList<User>()
                             .associateBy { it.id }
                     } catch (e: Exception) {
+                        println("RAFIQ_DEBUG: Fetching comment users error: ${e.message}")
                         e.printStackTrace()
                         emptyMap<String, User>()
                     }
@@ -78,18 +95,26 @@ class PostDetailsViewModel @Inject constructor(
                 
                 val commentsWithUsers = commentList.map { it.copy(user = usersMap[it.userId]) }
                 
-                // Flatten replies to prevent excessive nesting
-                fun flattenReplies(parentId: String, replyingToUser: String?, depth: Int): List<Comment> {
-                    val directReplies = commentsWithUsers.filter { it.parentId == parentId }
-                    return directReplies.map { 
-                        it.copy(replyingToUsername = replyingToUser) 
-                    } + directReplies.flatMap { flattenReplies(it.id, it.user?.name, depth + 1) }
+                // Build a true nested tree: each comment only holds its DIRECT replies,
+                // and those replies recursively hold their own direct replies.
+                fun buildReplies(parentId: String): List<Comment> {
+                    return commentsWithUsers
+                        .filter { it.parentId == parentId }
+                        .map { reply ->
+                            // Attach the replying-to username from the parent comment
+                            val parentUser = commentsWithUsers.find { it.id == parentId }?.user
+                            reply.copy(
+                                replyingToUsername = parentUser?.name,
+                                replies = buildReplies(reply.id).sortedBy { it.timestamp }
+                            )
+                        }
                 }
-                
+
                 val topLevelComments = commentsWithUsers
                     .filter { it.parentId == null }
-                    .map { it.copy(replies = flattenReplies(it.id, it.user?.name, 1).sortedBy { c -> c.timestamp }) }
+                    .map { it.copy(replies = buildReplies(it.id).sortedBy { c -> c.timestamp }) }
                 
+                println("RAFIQ_DEBUG: Updating _comments with ${topLevelComments.size} top-level comments")
                 _comments.value = topLevelComments
                 _isLoading.value = false
             }
@@ -98,6 +123,7 @@ class PostDetailsViewModel @Inject constructor(
 
     fun submitComment(postId: String, text: String, parentId: String?) {
         val userId = currentUserId ?: return
+        println("RAFIQ_DEBUG: submitComment called for post $postId with text '$text' and parentId $parentId")
         viewModelScope.launch {
             val generatedId = java.util.UUID.randomUUID().toString()
             val comment = Comment(
@@ -108,32 +134,73 @@ class PostDetailsViewModel @Inject constructor(
                 parentId = parentId,
                 timestamp = System.currentTimeMillis()
             )
-            postRepository.createComment(comment)
-            val postOwnerId = _postUser.value?.id
-            if (postOwnerId != null && postOwnerId != userId) {
-                notificationRepository.createNotification(
-                    recipientId = postOwnerId,
-                    type = "reply",
-                    postId = postId,
-                    commentId = comment.id
-                )
-            }
-            
-            if (parentId != null) {
-                val commentOwnerId = _comments.value.flatMap { it.replies + it }.find { it.id == parentId }?.userId
-                if (commentOwnerId != null && commentOwnerId != userId && commentOwnerId != postOwnerId) {
-                    notificationRepository.createNotification(
-                        recipientId = commentOwnerId,
-                        type = "reply",
-                        postId = postId,
-                        commentId = comment.id
-                    )
+            println("RAFIQ_DEBUG: Calling postRepository.createComment")
+            val result = postRepository.createComment(comment)
+            if (result.isSuccess) {
+                println("RAFIQ_DEBUG: createComment success")
+                val postOwnerId = _postUser.value?.id
+                
+                if (parentId == null) {
+                    // New top-level comment on a post → notify post owner
+                    if (postOwnerId != null && postOwnerId != userId) {
+                        notificationRepository.createNotification(
+                            recipientId = postOwnerId,
+                            type = "comment",
+                            postId = postId,
+                            commentId = comment.id
+                        )
+                    }
+                } else {
+                    // Reply to an existing comment → notify the comment owner
+                    // Also notify post owner if different from the comment owner
+                    val commentOwnerId = _comments.value
+                        .flatMap { listOf(it) + it.replies }
+                        .find { it.id == parentId }?.userId
+                    if (commentOwnerId != null && commentOwnerId != userId) {
+                        notificationRepository.createNotification(
+                            recipientId = commentOwnerId,
+                            type = "reply",
+                            postId = postId,
+                            commentId = comment.id
+                        )
+                    }
+                    if (postOwnerId != null && postOwnerId != userId && postOwnerId != commentOwnerId) {
+                        notificationRepository.createNotification(
+                            recipientId = postOwnerId,
+                            type = "comment",
+                            postId = postId,
+                            commentId = comment.id
+                        )
+                    }
                 }
-            }
             
-            // The getCommentsForPost flow might automatically emit if we set up realtime, 
-            // but we are using select which doesn't auto-update. So we manually reload.
-            loadPostDetails(postId)
+                // Mentions Logic
+                val mentions = Regex("@([a-zA-Z0-9_]+)").findAll(text).map { it.groupValues[1] }.toList()
+                if (mentions.isNotEmpty()) {
+                    try {
+                        val mentionedUsers = supabaseClient.postgrest["users"]
+                            .select(io.github.jan.supabase.postgrest.query.Columns.ALL) { filter { isIn("username", mentions) } }
+                            .decodeList<User>()
+                        for (u in mentionedUsers) {
+                            if (u.id != userId) {
+                                notificationRepository.createNotification(
+                                    recipientId = u.id,
+                                    type = "mention",
+                                    postId = postId,
+                                    commentId = comment.id
+                                )
+                            }
+                        }
+                    } catch (e: Exception) {
+                        println("RAFIQ_DEBUG: Mentions error: ${e.message}")
+                        e.printStackTrace()
+                    }
+                }
+            } else {
+                println("RAFIQ_DEBUG: createComment failed: ${result.exceptionOrNull()?.message}")
+            }
+            // The realtime flow in loadPostDetails will pick up the new comment automatically.
+            // No need to call loadPostDetails again here — that would start duplicate pollers.
         }
     }
 
@@ -142,14 +209,24 @@ class PostDetailsViewModel @Inject constructor(
         viewModelScope.launch {
             // Optimistic update
             val currentPost = _post.value
+            val hasLiked = currentPost?.likedBy?.get(userId) == true
             if (currentPost != null) {
-                val hasLiked = currentPost.likedBy[userId] == true
                 val newLikedBy = currentPost.likedBy.toMutableMap()
                 if (hasLiked) newLikedBy.remove(userId) else newLikedBy[userId] = true
                 _post.value = currentPost.copy(likesCount = newLikedBy.size, likedBy = newLikedBy)
             }
             
             val result = postRepository.likePost(postId, userId)
+            if (result.isSuccess && currentPost != null && !hasLiked) {
+                val postOwnerId = currentPost.userId
+                if (postOwnerId != userId) {
+                    notificationRepository.createNotification(
+                        recipientId = postOwnerId,
+                        type = "like",
+                        postId = postId
+                    )
+                }
+            }
             if (result.isFailure) {
                 // Revert if failed by reloading
                 loadPostDetails(postId)
@@ -185,5 +262,9 @@ class PostDetailsViewModel @Inject constructor(
             postRepository.updateComment(commentId, newText)
             _post.value?.id?.let { loadPostDetails(it) }
         }
+    }
+
+    suspend fun fetchLikers(postId: String): Result<List<User>> {
+        return postRepository.getPostLikers(postId)
     }
 }

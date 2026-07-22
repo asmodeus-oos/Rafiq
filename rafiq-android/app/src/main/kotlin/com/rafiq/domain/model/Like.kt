@@ -1,8 +1,12 @@
 package com.rafiq.domain.model
 
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
+
+@Serializable
 data class Like(
     val id: String = "",
-    val postId: String = "",
-    val userId: String = "",
-    val timestamp: Long = 0L
+    @SerialName("post_id") val postId: String = "",
+    @SerialName("user_id") val userId: String = "",
+    @SerialName("created_at") val createdAt: String? = null
 )

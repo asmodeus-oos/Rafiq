@@ -18,5 +18,13 @@ data class Message(
     @SerialName("is_voice")
     val isVoice: Boolean? = false,
     @SerialName("created_at")
-    val createdAt: String? = null
+    val createdAt: String? = null,
+    @SerialName("is_read")
+    val isRead: Boolean? = false,
+    @SerialName("reply_to_id")
+    val replyToId: String? = null,
+    @SerialName("status")
+    val status: String? = "SENT",
+    @SerialName("deleted_for_everyone")
+    val deletedForEveryone: Boolean? = false
 )

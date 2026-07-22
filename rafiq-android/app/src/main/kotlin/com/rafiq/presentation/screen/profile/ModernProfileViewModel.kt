@@ -10,10 +10,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import javax.inject.Inject
 import androidx.lifecycle.SavedStateHandle
 import com.rafiq.domain.repository.PostRepository
 import com.rafiq.domain.repository.FollowRepository
+import com.rafiq.domain.repository.NotificationRepository
 import com.rafiq.domain.model.Post
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
@@ -26,6 +28,7 @@ class ModernProfileViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
     private val postRepository: PostRepository,
     private val followRepository: FollowRepository,
+    private val notificationRepository: NotificationRepository,
     private val supabaseClient: SupabaseClient
 ) : ViewModel() {
 
@@ -44,8 +47,8 @@ class ModernProfileViewModel @Inject constructor(
     private val _posts = MutableStateFlow<List<Post>>(emptyList())
     val posts: StateFlow<List<Post>> = _posts.asStateFlow()
 
-    private val _isFollowing = MutableStateFlow(false)
-    val isFollowing: StateFlow<Boolean> = _isFollowing.asStateFlow()
+    private val _isFollowing = MutableStateFlow<Boolean?>(null)
+    val isFollowing: StateFlow<Boolean?> = _isFollowing.asStateFlow()
     
     private val _followers = MutableStateFlow<List<User>>(emptyList())
     val followers: StateFlow<List<User>> = _followers.asStateFlow()
@@ -73,6 +76,21 @@ class ModernProfileViewModel @Inject constructor(
             fetchUser(uidToFetch)
             fetchPosts(uidToFetch)
             fetchFollowStats(uidToFetch)
+            
+            // Record a profile visit notification (only fires if target is Diamond tier)
+            if (targetUserId != null && targetUserId != currentUserId) {
+                viewModelScope.launch {
+                    notificationRepository.recordProfileVisit(targetUserId)
+                }
+            }
+            
+            // Poll for user updates (online status)
+            viewModelScope.launch {
+                while(isActive) {
+                    kotlinx.coroutines.delay(5000) // Reduced from 1s to 5s to reduce load
+                    fetchUser(uidToFetch)
+                }
+            }
         } else {
             _isLoading.value = false
         }
@@ -160,10 +178,11 @@ class ModernProfileViewModel @Inject constructor(
                 val fetchedUser = supabaseClient.postgrest["users"]
                     .select(Columns.ALL) { filter { eq("id", uid) } }
                     .decodeSingleOrNull<User>()
-                _user.value = fetchedUser
+                if (fetchedUser != null) {
+                    _user.value = fetchedUser
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
-                _user.value = null
             }
             _isLoading.value = false
         }
@@ -278,15 +297,23 @@ class ModernProfileViewModel @Inject constructor(
     fun toggleFollow() {
         val targetUser = _user.value ?: return
         viewModelScope.launch {
-            if (_isFollowing.value) {
+            if (_isFollowing.value == true) {
                 followRepository.unfollowUser(targetUser.id)
                 _isFollowing.value = false
                 _followersCount.value -= 1
-            } else {
+            } else if (_isFollowing.value == false) {
                 followRepository.followUser(targetUser.id)
                 _isFollowing.value = true
                 _followersCount.value += 1
+                notificationRepository.createNotification(
+                    recipientId = targetUser.id,
+                    type = "follow"
+                )
             }
         }
+    }
+
+    suspend fun fetchLikers(postId: String): Result<List<User>> {
+        return postRepository.getPostLikers(postId)
     }
 }

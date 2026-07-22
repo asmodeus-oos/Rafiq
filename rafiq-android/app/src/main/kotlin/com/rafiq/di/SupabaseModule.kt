@@ -10,6 +10,7 @@ import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.storage.Storage
 import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.auth.Auth
+import io.ktor.client.engine.okhttp.OkHttp
 import javax.inject.Singleton
 
 @Module
@@ -23,6 +24,7 @@ object SupabaseModule {
             supabaseUrl = "https://ioxikjgdszqtufqgfbqt.supabase.co",
             supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlveGlramdkc3pxdHVmcWdmYnF0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTY1OTIsImV4cCI6MjA5OTYzMjU5Mn0.Hu1gcBXgx-rgbfSyWtbubVXIPG7DVgVKfKdg9n98mkI"
         ) {
+            httpEngine = OkHttp.create()
             @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
             defaultSerializer = io.github.jan.supabase.serializer.KotlinXSerializer(kotlinx.serialization.json.Json {
                 ignoreUnknownKeys = true

@@ -5,6 +5,16 @@ import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Count
+import io.github.jan.supabase.postgrest.query.Columns
+import io.github.jan.supabase.postgrest.query.filter.FilterOperator
+import io.github.jan.supabase.realtime.PostgresAction
+import io.github.jan.supabase.realtime.channel
+import io.github.jan.supabase.realtime.postgresChangeFlow
+import io.github.jan.supabase.realtime.realtime
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 class FollowRepositoryImpl @Inject constructor(
@@ -85,7 +95,7 @@ class FollowRepositoryImpl @Inject constructor(
 
     override suspend fun getFollowers(userId: String): List<com.rafiq.domain.model.User> {
         return try {
-            val followersData = supabaseClient.postgrest["followers"].select(io.github.jan.supabase.postgrest.query.Columns.list("follower_id")) {
+            val followersData = supabaseClient.postgrest["followers"].select(Columns.list("follower_id")) {
                 filter { eq("following_id", userId) }
             }.decodeList<Map<String, String>>()
             
@@ -103,7 +113,7 @@ class FollowRepositoryImpl @Inject constructor(
 
     override suspend fun getFollowing(userId: String): List<com.rafiq.domain.model.User> {
         return try {
-            val followingData = supabaseClient.postgrest["followers"].select(io.github.jan.supabase.postgrest.query.Columns.list("following_id")) {
+            val followingData = supabaseClient.postgrest["followers"].select(Columns.list("following_id")) {
                 filter { eq("follower_id", userId) }
             }.decodeList<Map<String, String>>()
             
@@ -116,6 +126,30 @@ class FollowRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()
+        }
+    }
+    
+    // Adding real-time flows for counts if needed (optional but good practice)
+    fun getFollowersCountFlow(userId: String): Flow<Int> = callbackFlow {
+        val fetchCount = suspend {
+            getFollowersCount(userId)
+        }
+        trySend(fetchCount())
+        
+        val channel = supabaseClient.channel("followers_count_$userId")
+        val flow = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
+            table = "followers"
+            filter("following_id", FilterOperator.EQ, userId)
+        }
+        
+        val job = launch {
+            flow.collect { trySend(fetchCount()) }
+        }
+        
+        launch { channel.subscribe() }
+        awaitClose { 
+            job.cancel()
+            launch { channel.unsubscribe() }
         }
     }
 }
