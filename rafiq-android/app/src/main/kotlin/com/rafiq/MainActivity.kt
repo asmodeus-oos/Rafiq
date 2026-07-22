@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,11 +61,15 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             supabaseClient.auth.sessionStatus.collectLatest { status ->
                 if (status is SessionStatus.Authenticated) {
-                    val serviceIntent = android.content.Intent(this@MainActivity, com.rafiq.service.NotificationService::class.java)
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                        startForegroundService(serviceIntent)
-                    } else {
-                        startService(serviceIntent)
+                    try {
+                        val serviceIntent = android.content.Intent(this@MainActivity, com.rafiq.service.NotificationService::class.java)
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                            startForegroundService(serviceIntent)
+                        } else {
+                            startService(serviceIntent)
+                        }
+                    } catch (e: Exception) {
+                        Log.w("MainActivity", "Failed to start NotificationService: ${e.message}")
                     }
 
                     lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -126,15 +131,18 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             RafiqTheme {
-                val isAuthenticated = supabaseClient.auth.currentSessionOrNull() != null
-                var showApp by remember { mutableStateOf(isAuthenticated) }
-                var sessionChecked by remember { mutableStateOf(false) }
+                val sessionStatus by supabaseClient.auth.sessionStatus.collectAsState(initial = supabaseClient.auth.sessionStatus.value)
+                val isAuthenticated = sessionStatus is SessionStatus.Authenticated || supabaseClient.auth.currentSessionOrNull() != null
+                val sessionChecked = sessionStatus !is SessionStatus.Initializing
+
+                var authSuccessState by remember { mutableStateOf(false) }
+                val showApp = isAuthenticated || authSuccessState
 
                 // Parse initial deep link / app link
                 val parsedTarget = remember(intent) { DeepLinkManager.parseIntent(intent) }
                 val initialRoute = remember(parsedTarget) { parsedTarget?.toRouteString() }
 
-                // If user is unauthenticated, save deep link to restore after login
+                // Save pending deep link if unauthenticated
                 LaunchedEffect(initialRoute, isAuthenticated) {
                     if (initialRoute != null && !isAuthenticated) {
                         DeepLinkManager.savePendingDeepLink(this@MainActivity, initialRoute)
@@ -162,10 +170,6 @@ class MainActivity : ComponentActivity() {
                 val permissionsState = rememberMultiplePermissionsState(permissionsToRequest)
 
                 LaunchedEffect(Unit) {
-                    sessionChecked = true
-                    if (isAuthenticated) {
-                        showApp = true
-                    }
                     if (!permissionsState.allPermissionsGranted) {
                         permissionsState.launchMultiplePermissionRequest()
                     }
@@ -198,7 +202,7 @@ class MainActivity : ComponentActivity() {
                     } else if (!showApp) {
                         com.rafiq.presentation.auth.AuthScreen(
                             onAuthSuccess = {
-                                showApp = true
+                                authSuccessState = true
                             }
                         )
                     } else {
@@ -221,7 +225,6 @@ class MainActivity : ComponentActivity() {
         val route = target?.toRouteString()
         if (route != null) {
             if (supabaseClient.auth.currentSessionOrNull() != null) {
-                // Application in foreground — refresh content or navigate
                 Log.d("MainActivity", "onNewIntent deep link route: $route")
             } else {
                 DeepLinkManager.savePendingDeepLink(this, route)

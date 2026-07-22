@@ -21,10 +21,10 @@ sealed class Route(val route: String) {
         }
     }
     
-    object PostDetails : Route("post_details/{postId}?commentId={commentId}") {
-        fun createRoute(postId: String): String = "post_details/$postId"
-        fun createRouteWithComment(postId: String, commentId: String): String = "post_details/$postId?commentId=$commentId"
-        fun createRouteForComment(commentId: String): String = "post_details/unknown?commentId=$commentId"
+    object PostDetails : Route("post_details?postId={postId}&commentId={commentId}") {
+        fun createRoute(postId: String): String = "post_details?postId=$postId"
+        fun createRouteWithComment(postId: String, commentId: String): String = "post_details?postId=$postId&commentId=$commentId"
+        fun createRouteForComment(commentId: String): String = "post_details?commentId=$commentId"
     }
     
     // Call Flow

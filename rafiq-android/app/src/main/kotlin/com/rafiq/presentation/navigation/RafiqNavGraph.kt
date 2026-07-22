@@ -127,7 +127,11 @@ fun RafiqNavGraph(
         composable(
             route = Route.PostDetails.route,
             arguments = listOf(
-                navArgument("postId") { type = NavType.StringType },
+                navArgument("postId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
                 navArgument("commentId") {
                     type = NavType.StringType
                     nullable = true

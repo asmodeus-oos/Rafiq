@@ -44,20 +44,37 @@ class PostDetailsViewModel @Inject constructor(
     // Track the main loading job so we can cancel it before restarting
     private var loadJob: kotlinx.coroutines.Job? = null
 
-    fun loadPostDetails(postId: String) {
-        println("RAFIQ_DEBUG: loadPostDetails called for $postId")
-        // Cancel previous job to avoid duplicate pollers / flow collectors
+    fun loadPostDetails(postId: String, commentId: String? = null) {
+        println("RAFIQ_DEBUG: loadPostDetails called for postId='$postId', commentId='$commentId'")
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             _isLoading.value = true
             
+            var targetPostId = postId
+            if (targetPostId.isBlank() && !commentId.isNullOrBlank()) {
+                try {
+                    val c = supabaseClient.postgrest["comments"]
+                        .select(Columns.list("post_id")) { filter { eq("id", commentId) } }
+                        .decodeSingleOrNull<Comment>()
+                    if (c?.postId != null) {
+                        targetPostId = c.postId
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            if (targetPostId.isBlank()) {
+                _isLoading.value = false
+                return@launch
+            }
+
+            val finalPostId = targetPostId
             // Poll Post and User every 1 second
             launch {
                 while(isActive) {
-                    println("RAFIQ_DEBUG: Polling post data for $postId")
-                    val postResult = postRepository.getPostById(postId)
+                    val postResult = postRepository.getPostById(finalPostId)
                     postResult.getOrNull()?.let { p ->
-                        println("RAFIQ_DEBUG: Polled post: $p")
                         _post.value = p
                         try {
                             val u = supabaseClient.postgrest["users"]
@@ -65,7 +82,6 @@ class PostDetailsViewModel @Inject constructor(
                                 .decodeSingle<User>()
                             _postUser.value = u
                         } catch (e: Exception) {
-                            println("RAFIQ_DEBUG: Polling user error: ${e.message}")
                             e.printStackTrace()
                         }
                     }

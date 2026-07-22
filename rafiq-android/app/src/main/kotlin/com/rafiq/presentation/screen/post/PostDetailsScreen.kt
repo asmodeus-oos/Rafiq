@@ -53,8 +53,8 @@ fun PostDetailsScreen(
 
     val listState = rememberLazyListState()
 
-    LaunchedEffect(postId) {
-        viewModel.loadPostDetails(postId)
+    LaunchedEffect(postId, highlightCommentId) {
+        viewModel.loadPostDetails(postId, highlightCommentId)
     }
 
     // Auto-scroll to target comment when deep link opens
